@@ -129,6 +129,10 @@ def derive_genres(form, subjects, title, bio):
         genres.add("Non-fiction")
     if bio:
         genres.add("Biography")
+    # Adult history books often carry thin Catalan subjects ("A Concise History
+    # of Spain" has none) — fall back to the English title for non-fiction.
+    if form == "0" and re.search(r"\bhistor(y|ies|ical)\b", tfolded):
+        genres.add("History")
     return sorted(genres)
 
 
@@ -151,6 +155,7 @@ def run_batch(bibs):
         out = subprocess.run(["yaz-client"], input="\n".join(cmds) + "\n",
                              capture_output=True, text=True, timeout=600).stdout
     except subprocess.TimeoutExpired:
+        print(f"BATCH TIMEOUT ({len(bibs)} bibs, {bibs[0]}..) — will retry on next run", flush=True)
         return []
     # split transcript into per-find segments, in command order
     segs = re.split(r"Sent searchRequest\.", out)[1:]
