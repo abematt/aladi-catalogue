@@ -50,7 +50,8 @@ def enrichment_payload():
                 except Exception:
                     continue
                 if not r.get("miss"):
-                    out[r["bib"]] = [r.get("form", ""), r.get("aud", ""), r.get("genres", [])]
+                    out[r["bib"]] = [r.get("form", ""), r.get("aud", ""), r.get("genres", []),
+                                     r.get("libs", [])]
         _enrich_cache["body"] = json.dumps(out, ensure_ascii=False).encode()
         _enrich_cache["mtime"] = mtime
     return _enrich_cache["body"]
@@ -109,6 +110,14 @@ class Handler(SimpleHTTPRequestHandler):
             if not p:
                 return self.send_json({"error": "no snapshot yet — run scraper.py"}, 404)
             with open(p, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        elif parsed.path == "/api/libraries":
+            with open(os.path.join(ROOT, "data", "libraries.json"), "rb") as f:
                 data = f.read()
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")

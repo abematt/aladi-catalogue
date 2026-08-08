@@ -164,12 +164,17 @@ def run_batch(bibs):
         subjects = [re.sub(r"\s*\$\w", " — ", s).strip(" .—")
                     for s in re.findall(r"^6[05][05].{0,4}\$a (.*)$", seg, re.M)]
         pages = re.search(r"^300\s+\$a\s*([^$]*)", seg, re.M)
+        # 907 $i = holding-library codes, "(2)xyz1" means two copies at xyz1
+        libs = sorted({re.sub(r"^\(\d+\)", "", c)
+                       for line in re.findall(r"^907 .*$", seg, re.M)
+                       for c in re.findall(r"\$i ?([()\w]+)", line)} - {"none"})
         # sanity: response must belong to the requested bib
         idm = re.search(r"\$a \.?(b\d{7,8})", seg)
         if idm and not idm.group(1).startswith(bib):
             results.append({"bib": bib, "miss": True})
             continue
         extra = {"phys": pages.group(1).strip(" :;.")} if pages else {}
+        extra["libs"] = libs
         results.append({"bib": bib, **derive(f008.group(1) if f008 else "", subjects, extra,
                                              title=TITLES.get(bib, ""))})
     return results
@@ -219,7 +224,9 @@ def main():
                     done.add(json.loads(line)["bib"])
                 except Exception:
                     pass
-    books = [r[5] for r in snap["items"] if (r[6] if len(r) > 6 else "a") == "a"]
+    # all material types — genre fields only matter for books, but the
+    # holding-library codes matter for everything
+    books = [r[5] for r in snap["items"]]
     todo = [b for b in books if b not in done]
     if limit:
         todo = todo[:limit]

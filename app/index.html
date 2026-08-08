@@ -92,6 +92,10 @@
   .typechips button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .genrechips { border-top: 1px dotted var(--hairline); padding-top: 8px; }
   .typechips[hidden] { display: none; }
+  #libbar input {
+    font: inherit; font-size: 12.5px; color: var(--ink); background: var(--panel);
+    border: 1px dashed var(--hairline); border-radius: 99px; padding: 3px 11px; width: 190px;
+  }
   .genrechips button { font-size: 12px; padding: 2px 9px; }
   .genrechips .cov { color: var(--muted); font-size: 12px; align-self: center; margin-left: auto; font-variant-numeric: tabular-nums; }
   .rowline .y .k {
@@ -177,6 +181,10 @@
 <div class="toolbar" id="toolbar">
   <div class="typechips" id="typechips" role="group" aria-label="Material type"></div>
   <div class="typechips genrechips" id="genrechips" role="group" aria-label="Genre" hidden></div>
+  <div class="typechips" id="libbar">
+    <input type="text" id="libpick" list="liblist" placeholder="+ Add your library…" aria-label="Add a library">
+    <datalist id="liblist"></datalist>
+  </div>
   <input type="search" id="q" placeholder="Search title, author, publisher…" aria-label="Search">
   <select id="decade" aria-label="Decade">
     <option value="">Any decade</option>
@@ -218,8 +226,58 @@
   let activeType = "";
   let activeGenre = "";
   let activeAud = "";
-  let enrich = {};       // bib -> [form, aud, [genres]]
+  let enrich = {};       // bib -> [form, aud, [genres], [libCodes]]
   let nBooks = 0;
+  let LIBS = {};         // code -> name
+  let myLibs = JSON.parse(localStorage.getItem("myLibs") || "[]");
+  let libFilterOn = localStorage.getItem("libFilterOn") === "1";
+
+  fetch("/api/libraries").then(r => r.json()).then(m => {
+    LIBS = m;
+    $("liblist").innerHTML = Object.values(m).map(n => `<option value="${esc(n)}">`).join("");
+    renderLibBar();
+  });
+
+  function renderLibBar() {
+    const bar = $("libbar");
+    bar.querySelectorAll(".libchip, .libtoggle").forEach(el => el.remove());
+    const input = $("libpick");
+    for (const code of myLibs) {
+      const chip = document.createElement("button");
+      chip.className = "libchip";
+      chip.setAttribute("aria-pressed", "true");
+      chip.title = "Remove this library";
+      chip.textContent = `📍 ${LIBS[code] || code} ✕`;
+      chip.onclick = () => {
+        myLibs = myLibs.filter(c => c !== code);
+        persistLibs(); renderLibBar(); apply();
+      };
+      bar.insertBefore(chip, input);
+    }
+    if (myLibs.length) {
+      const t = document.createElement("button");
+      t.className = "libtoggle";
+      t.textContent = "At my libraries only";
+      t.setAttribute("aria-pressed", libFilterOn);
+      t.onclick = () => { libFilterOn = !libFilterOn; persistLibs(); renderLibBar(); apply(); };
+      bar.appendChild(t);
+    } else {
+      libFilterOn = false;
+    }
+  }
+  function persistLibs() {
+    localStorage.setItem("myLibs", JSON.stringify(myLibs));
+    localStorage.setItem("libFilterOn", libFilterOn ? "1" : "0");
+  }
+  document.addEventListener("change", e => {
+    if (e.target.id !== "libpick") return;
+    const name = e.target.value.trim();
+    const code = Object.keys(LIBS).find(c => LIBS[c] === name);
+    if (code && !myLibs.includes(code)) {
+      myLibs.push(code); persistLibs(); renderLibBar(); apply();
+    }
+    if (code) e.target.value = "";
+  });
 
   fetch("/api/catalogue").then(r => r.json()).then(d => {
     if (d.error) { $("list").innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
@@ -326,6 +384,10 @@
     view = [];
     for (let i = 0; i < items.length; i++) {
       if (activeType && (items[i][6] || "a") !== activeType) continue;
+      if (libFilterOn && myLibs.length) {
+        const e = enrich[items[i][5]];
+        if (!e || !e[3] || !e[3].some(c => myLibs.includes(c))) continue;
+      }
       if (activeGenre || activeAud) {
         const e = enrich[items[i][5]];
         if (!e) continue;
