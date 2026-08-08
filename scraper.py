@@ -31,6 +31,11 @@ import urllib.request
 BASE = "https://aladi.diba.cat"
 SCOPE = "S171*eng"
 MAIN_Q = "and+or+the+or+a+or+in+or+de+or+of"
+# OPAC material-type codes, in scrape order (biggest first)
+MATERIALS = {
+    "a": "Book", "j": "CD", "d": "Vinyl", "g": "DVD", "c": "Printed music",
+    "1": "Board game", "r": "Magazine", "e": "Map", "p": "Video game",
+}
 RESIDUAL_TERMS = [
     "s", "i", "la", "el", "en", "es", "on", "for", "is", "by", "my", "un",
     "le", "y", "o", "no", "new", "love", "art", "con", "per", "del", "que",
@@ -58,9 +63,9 @@ def get(url, tries=4):
             time.sleep(2.0 * (attempt + 1))
 
 
-def search_page1(query):
+def search_page1(query, mat):
     """Run a fresh keyword search; return (total, browse_url_template)."""
-    url = f"{BASE}/search~{SCOPE}/X?SEARCH={query}&l=eng&m=a&SORT=AX"
+    url = f"{BASE}/search~{SCOPE}/X?SEARCH={query}&l=eng&m={mat}&SORT=AX"
     body = get(url)
     if body is None:
         return None, None
@@ -144,18 +149,20 @@ def load_done():
     return done
 
 
-def fetch_and_store(key, url, fh):
+def fetch_and_store(key, url, mat, fh):
     body = get(url)
     if body is None:
         return
     rows = parse_rows(body)
+    for r in rows:
+        r["type"] = mat
     with LOCK:
         fh.write(json.dumps({"key": key, "rows": rows}) + "\n")
         fh.flush()
 
 
-def scrape_query(tag, query, done, fh):
-    total, template = search_page1(query)
+def scrape_query(tag, query, mat, done, fh):
+    total, template = search_page1(query, mat)
     if not total or not template:
         print(f"[{tag}] total={total} (skip)", flush=True)
         return
@@ -164,7 +171,7 @@ def scrape_query(tag, query, done, fh):
     print(f"[{tag}] total={total}, pages todo: {len(todo)}", flush=True)
     n = 0
     with cf.ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        for _ in cf.as_completed([ex.submit(fetch_and_store, k, u, fh) for k, u in todo]):
+        for _ in cf.as_completed([ex.submit(fetch_and_store, k, u, mat, fh) for k, u in todo]):
             n += 1
             if n % 200 == 0:
                 print(f"[{tag}] {n}/{len(todo)} pages", flush=True)
@@ -172,13 +179,18 @@ def scrape_query(tag, query, done, fh):
 
 def main():
     resume = "--resume" in sys.argv
+    mats = list(MATERIALS)
+    for arg in sys.argv[1:]:
+        if arg.startswith("--materials="):
+            mats = [m for m in arg.split("=", 1)[1].split(",") if m in MATERIALS]
     if not resume and os.path.exists(PAGES_JSONL):
         os.remove(PAGES_JSONL)
     done = load_done()
     with open(PAGES_JSONL, "a") as fh:
-        scrape_query("main", MAIN_Q, done, fh)
-        for t in RESIDUAL_TERMS:
-            scrape_query(f"res-{t}", f"{t}+and+not+%28{MAIN_Q}%29", done, fh)
+        for mat in mats:
+            scrape_query(f"{mat}:main", MAIN_Q, mat, done, fh)
+            for t in RESIDUAL_TERMS:
+                scrape_query(f"{mat}:res-{t}", f"{t}+and+not+%28{MAIN_Q}%29", mat, done, fh)
 
     seen = {}
     with open(PAGES_JSONL) as f:
@@ -190,21 +202,32 @@ def main():
             for r in rec["rows"]:
                 seen.setdefault(r["bib"], r)
     items = sorted(seen.values(), key=lambda r: (r["title"].casefold(), r["bib"]))
+    rows = [[r["title"], r["author"], r["pub"], r["year"], r["isbn"], r["bib"], r.get("type", "a")]
+            for r in items]
+
     today = datetime.date.today().isoformat()
     os.makedirs(SNAP_DIR, exist_ok=True)
     snap_path = os.path.join(SNAP_DIR, f"{today}.json")
+    # Partial-materials run on a day that already has a snapshot: keep the
+    # existing records for bibs this run didn't cover (e.g. add CDs to books).
+    if os.path.exists(snap_path):
+        have = {r[5] for r in rows}
+        with open(snap_path) as f:
+            for old in json.load(f)["items"]:
+                if old[5] not in have:
+                    rows.append(old + ["a"] * (7 - len(old)))
+        rows.sort(key=lambda r: (r[0].casefold(), r[5]))
     with open(snap_path, "w") as f:
-        json.dump({"date": today, "count": len(items),
-                   "items": [[r["title"], r["author"], r["pub"], r["year"], r["isbn"], r["bib"]] for r in items]},
+        json.dump({"date": today, "count": len(rows), "items": rows},
                   f, ensure_ascii=False, separators=(",", ":"))
     with open(os.path.join(SNAP_DIR, f"{today}.csv"), "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["title", "author", "publisher", "year", "isbn", "record_id", "permalink"])
-        for r in items:
-            w.writerow([r["title"], r["author"], r["pub"], r["year"], r["isbn"], r["bib"],
-                        f"{BASE}/record={r['bib']}~{SCOPE}"])
+        w.writerow(["title", "author", "publisher", "year", "isbn_or_ean", "record_id", "type", "permalink"])
+        for r in rows:
+            w.writerow([r[0], r[1], r[2], r[3], r[4], r[5], MATERIALS.get(r[6], r[6]),
+                        f"{BASE}/record={r[5]}~{SCOPE}"])
     os.remove(PAGES_JSONL)
-    print(f"DONE: {len(items)} unique records -> {snap_path}", flush=True)
+    print(f"DONE: {len(rows)} unique records -> {snap_path}", flush=True)
 
 
 if __name__ == "__main__":

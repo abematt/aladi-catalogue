@@ -81,6 +81,19 @@
     outline: 2px solid var(--accent); outline-offset: 1px;
   }
   .toolbar .count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; margin-left: auto; }
+  .typechips { flex: 1 1 100%; display: flex; gap: 6px; flex-wrap: wrap; }
+  .typechips button {
+    appearance: none; font: inherit; font-size: 12.5px; font-weight: 550;
+    padding: 3px 11px; border-radius: 99px; border: 1px solid var(--hairline);
+    background: var(--panel); color: var(--muted); cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .typechips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .typechips button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .rowline .y .k {
+    display: block; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); text-align: right;
+  }
   .toolbar a.export { color: var(--accent); font-size: 13px; text-decoration: none; }
   .toolbar a.export:hover { text-decoration: underline; }
   main { max-width: 980px; margin: 0 auto; padding: 0 24px 80px; }
@@ -150,6 +163,7 @@
 </header>
 
 <div class="toolbar" id="toolbar">
+  <div class="typechips" id="typechips" role="group" aria-label="Material type"></div>
   <input type="search" id="q" placeholder="Search title, author, publisher…" aria-label="Search">
   <input type="number" id="y1" placeholder="from" aria-label="Year from" min="1400" max="2030">
   <input type="number" id="y2" placeholder="to" aria-label="Year to" min="1400" max="2030">
@@ -175,20 +189,44 @@
   const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   const CHUNK = 150;
-  let items = [];        // [title, author, pub, year, isbn, bib]
+  const TYPE_PLURAL = { a: "Books", j: "CDs", d: "Vinyl", g: "DVDs", c: "Scores",
+                        "1": "Board games", r: "Magazines", e: "Maps", p: "Video games" };
+  const TYPE_ONE = { a: "Book", j: "CD", d: "Vinyl", g: "DVD", c: "Score",
+                     "1": "Board game", r: "Magazine", e: "Map", p: "Video game" };
+  let items = [];        // [title, author, pub, year, isbn, bib, type]
   let normed = [];       // precomputed search strings
   let view = [];         // filtered + sorted indices
   let rendered = 0;
   let snapDate = "";
   let openBib = null;
+  let activeType = "";
 
   fetch("/api/catalogue").then(r => r.json()).then(d => {
     if (d.error) { $("list").innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
     items = d.items; snapDate = d.date;
     normed = items.map(r => norm(r[0] + " " + r[1] + " " + r[2]));
-    $("stats").textContent = `${d.count.toLocaleString("en")} books · snapshot ${d.date}`;
+    $("stats").textContent = `${d.count.toLocaleString("en")} items · snapshot ${d.date}`;
+    buildChips();
     apply();
   });
+
+  function buildChips() {
+    const counts = {};
+    for (const r of items) { const t = r[6] || "a"; counts[t] = (counts[t] || 0) + 1; }
+    const order = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    const chip = (val, label, n) =>
+      `<button aria-pressed="${val === activeType}" data-type="${val}">${label} ${n.toLocaleString("en")}</button>`;
+    $("typechips").innerHTML = chip("", "All", items.length) +
+      order.map(t => chip(t, TYPE_PLURAL[t] || t, counts[t])).join("");
+    $("typechips").addEventListener("click", e => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      activeType = b.dataset.type;
+      $("typechips").querySelectorAll("button").forEach(x =>
+        x.setAttribute("aria-pressed", x.dataset.type === activeType));
+      apply();
+    });
+  }
 
   function apply() {
     const q = norm($("q").value.trim());
@@ -197,6 +235,7 @@
     const y2 = parseInt($("y2").value) || 9999;
     view = [];
     for (let i = 0; i < items.length; i++) {
+      if (activeType && (items[i][6] || "a") !== activeType) continue;
       if (terms.length && !terms.every(t => normed[i].includes(t))) continue;
       if (y1 > 0 || y2 < 9999) {
         const y = parseInt(items[i][3]) || 0;
@@ -217,10 +256,13 @@
 
   function rowHTML(r) {
     const bits = [r[1], r[2]].filter(Boolean).join(" — ");
+    const ty = r[6] || "a";
+    const ref = r[4] ? ` · ${ty === "a" ? "ISBN" : "EAN"} ${r[4]}` : "";
+    const tag = ty !== "a" ? `<span class="k">${TYPE_ONE[ty] || ty}</span>` : "";
     return `<div class="rowline" tabindex="0" role="button" data-bib="${r[5]}" aria-expanded="false">
       <div class="t">${esc(r[0])}</div>
-      <div class="y">${r[3] || ""}</div>
-      <div class="a">${esc(bits)}${r[4] ? ` · ISBN ${r[4]}` : ""}</div>
+      <div class="y">${r[3] || ""}${tag}</div>
+      <div class="a">${esc(bits)}${ref}</div>
     </div>`;
   }
 
@@ -287,10 +329,11 @@
 
   // ---- CSV export of the current filter ----
   $("export").addEventListener("click", e => {
-    const rows = [["title", "author", "publisher", "year", "isbn", "record_id", "permalink"]];
+    const rows = [["title", "author", "publisher", "year", "isbn_or_ean", "record_id", "type", "permalink"]];
     for (const i of view) {
       const r = items[i];
-      rows.push([r[0], r[1], r[2], r[3], r[4], r[5], `https://aladi.diba.cat/record=${r[5]}~S171*eng`]);
+      rows.push([r[0], r[1], r[2], r[3], r[4], r[5], TYPE_ONE[r[6] || "a"],
+                 `https://aladi.diba.cat/record=${r[5]}~S171*eng`]);
     }
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     e.target.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
@@ -317,7 +360,7 @@
         return;
       }
       $("diffs").innerHTML = list.map(d => {
-        const li = r => `<li>${esc(r[0])} <span class="who">${esc(r[1] || "")}${r[3] ? " · " + r[3] : ""}</span></li>`;
+        const li = r => `<li>${esc(r[0])} <span class="who">${esc(r[1] || "")}${r[3] ? " · " + r[3] : ""}${(r[6] || "a") !== "a" ? " · " + (TYPE_ONE[r[6]] || r[6]) : ""}</span></li>`;
         return `<div class="diffcard">
           <header><h3>${d.from} → ${d.to}</h3>
           <span class="nums">${d.counts.from.toLocaleString("en")} → ${d.counts.to.toLocaleString("en")} books ·

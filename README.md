@@ -1,9 +1,11 @@
 # Aladí English Catalogue
 
-A local, browsable catalogue of **every English-language book** in the Aladi OPAC
-(aladi.diba.cat — the Barcelona province municipal libraries network), with weekly
-snapshots, week-over-week diffs, and **on-demand live availability** (which copies
-are on the shelf vs checked out, per library).
+A local, browsable catalogue of **every English-language item** in the Aladi OPAC
+(aladi.diba.cat — the Barcelona province municipal libraries network) — books,
+music CDs, vinyl, DVDs, printed scores, board games, magazines, maps, video
+games — with weekly snapshots, week-over-week diffs, and **on-demand live
+availability** (which copies are on the shelf vs checked out, per library).
+First full snapshot (2026-08-08): ~61k items, of which 32,447 books.
 
 Built because the OPAC has no "browse everything in English" view — its language
 filter only applies on top of a keyword search.
