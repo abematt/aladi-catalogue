@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aladí · English Catalogue</title>
+<style>
+  :root {
+    --ground: #FAF8F5;
+    --panel: #FFFFFF;
+    --ink: #211D1A;
+    --muted: #857D74;
+    --accent: #B3282D;
+    --hairline: #E7E2DB;
+    --ok: #2E7D4F;
+    --ok-bg: #E6F2EA;
+    --due: #9A6710;
+    --due-bg: #F7EDD8;
+    --other: #6B655E;
+    --other-bg: #EEEBE6;
+    --row-hover: #F3EFE9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #1B1917; --panel: #242120; --ink: #EDE9E4; --muted: #9C948A;
+      --accent: #E05A5F; --hairline: #383430;
+      --ok: #58B37E; --ok-bg: #24352B; --due: #D9A34A; --due-bg: #383021;
+      --other: #A29A90; --other-bg: #2E2B28; --row-hover: #2A2725;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #1B1917; --panel: #242120; --ink: #EDE9E4; --muted: #9C948A;
+    --accent: #E05A5F; --hairline: #383430;
+    --ok: #58B37E; --ok-bg: #24352B; --due: #D9A34A; --due-bg: #383021;
+    --other: #A29A90; --other-bg: #2E2B28; --row-hover: #2A2725;
+  }
+  :root[data-theme="light"] {
+    --ground: #FAF8F5; --panel: #FFFFFF; --ink: #211D1A; --muted: #857D74;
+    --accent: #B3282D; --hairline: #E7E2DB;
+    --ok: #2E7D4F; --ok-bg: #E6F2EA; --due: #9A6710; --due-bg: #F7EDD8;
+    --other: #6B655E; --other-bg: #EEEBE6; --row-hover: #F3EFE9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    padding: 28px 24px 0;
+    max-width: 980px; margin: 0 auto;
+  }
+  .masthead { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .masthead h1 {
+    font-family: "Iowan Old Style", "New York", Georgia, serif;
+    font-size: 30px; font-weight: 600; margin: 0; letter-spacing: -0.01em;
+  }
+  .masthead h1 .red { color: var(--accent); }
+  .stats { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .tabs { display: flex; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--hairline); }
+  .tabs button {
+    appearance: none; background: none; border: none; border-bottom: 2px solid transparent;
+    font: inherit; font-size: 14px; font-weight: 500; color: var(--muted);
+    padding: 8px 14px; cursor: pointer;
+  }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  .tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .toolbar {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--ground);
+    max-width: 980px; margin: 0 auto; padding: 14px 24px;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .toolbar input[type="search"], .toolbar input[type="number"], .toolbar select {
+    font: inherit; color: var(--ink); background: var(--panel);
+    border: 1px solid var(--hairline); border-radius: 7px; padding: 7px 10px;
+  }
+  .toolbar input[type="search"] { flex: 1 1 260px; min-width: 200px; }
+  .toolbar input[type="number"] { width: 84px; font-variant-numeric: tabular-nums; }
+  .toolbar input:focus-visible, .toolbar select:focus-visible, .rowline:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  .toolbar .count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; margin-left: auto; }
+  .toolbar a.export { color: var(--accent); font-size: 13px; text-decoration: none; }
+  .toolbar a.export:hover { text-decoration: underline; }
+  main { max-width: 980px; margin: 0 auto; padding: 0 24px 80px; }
+  #list { border-left: 1px solid var(--hairline); border-right: 1px solid var(--hairline); }
+  .rowline {
+    display: grid; grid-template-columns: 1fr auto; gap: 2px 16px;
+    padding: 10px 14px; border-bottom: 1px solid var(--hairline);
+    cursor: pointer; background: var(--panel);
+  }
+  .rowline:hover { background: var(--row-hover); }
+  .rowline .t { font-weight: 550; }
+  .rowline .a { color: var(--muted); font-size: 13.5px; grid-column: 1; }
+  .rowline .y { color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; text-align: right; align-self: start; }
+  .detail {
+    background: var(--panel); border-bottom: 1px solid var(--hairline);
+    padding: 14px 16px 18px; display: flex; gap: 18px; align-items: flex-start;
+  }
+  .detail img { width: 74px; border-radius: 4px; border: 1px solid var(--hairline); }
+  .detail .meta { flex: 1; min-width: 0; }
+  .detail .pub { color: var(--muted); font-size: 13.5px; margin-bottom: 8px; }
+  .copies { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .copies th {
+    text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; padding: 4px 10px 4px 0; border-bottom: 1px solid var(--hairline);
+  }
+  .copies td { padding: 5px 10px 5px 0; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  .chip {
+    display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 550;
+    white-space: nowrap;
+  }
+  .chip.ok { color: var(--ok); background: var(--ok-bg); }
+  .chip.due { color: var(--due); background: var(--due-bg); }
+  .chip.other { color: var(--other); background: var(--other-bg); }
+  .detail .links { margin-top: 10px; font-size: 13px; }
+  .detail .links a { color: var(--accent); }
+  .loading, .empty { color: var(--muted); padding: 24px 14px; }
+  #sentinel { height: 1px; }
+  /* Changes tab */
+  .diffcard { background: var(--panel); border: 1px solid var(--hairline); border-radius: 10px; margin: 18px 0; overflow: hidden; }
+  .diffcard header { padding: 12px 16px; margin: 0; max-width: none; display: flex; gap: 14px; align-items: baseline; border-bottom: 1px solid var(--hairline); }
+  .diffcard header h3 { margin: 0; font-size: 15px; }
+  .diffcard header .nums { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .diffcard .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; padding: 12px 16px 16px; }
+  @media (max-width: 640px) { .diffcard .cols { grid-template-columns: 1fr; } }
+  .diffcard h4 { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 8px 0 6px; }
+  .diffcard ul { margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
+  .diffcard li { padding: 3px 0; border-bottom: 1px dotted var(--hairline); }
+  .diffcard li .who { color: var(--muted); }
+  .plus { color: var(--ok); font-weight: 600; }
+  .minus { color: var(--accent); font-weight: 600; }
+  @media (prefers-reduced-motion: no-preference) {
+    .detail { animation: open .18s ease-out; }
+    @keyframes open { from { opacity: 0; transform: translateY(-3px); } }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="masthead">
+    <h1>Aladí <span class="red">·</span> English Catalogue</h1>
+    <span class="stats" id="stats">loading…</span>
+  </div>
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" id="tab-cat">Catalogue</button>
+    <button role="tab" aria-selected="false" id="tab-diff">Weekly changes</button>
+  </div>
+</header>
+
+<div class="toolbar" id="toolbar">
+  <input type="search" id="q" placeholder="Search title, author, publisher…" aria-label="Search">
+  <input type="number" id="y1" placeholder="from" aria-label="Year from" min="1400" max="2030">
+  <input type="number" id="y2" placeholder="to" aria-label="Year to" min="1400" max="2030">
+  <select id="sort" aria-label="Sort">
+    <option value="title">Title A–Z</option>
+    <option value="author">Author A–Z</option>
+    <option value="new">Newest first</option>
+    <option value="old">Oldest first</option>
+  </select>
+  <span class="count" id="count"></span>
+  <a class="export" id="export" href="#" download="aladi-english-filtered.csv">Export CSV</a>
+</div>
+
+<main>
+  <div id="list"><div class="loading">Loading catalogue…</div></div>
+  <div id="sentinel"></div>
+  <div id="diffs" hidden></div>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const CHUNK = 150;
+  let items = [];        // [title, author, pub, year, isbn, bib]
+  let normed = [];       // precomputed search strings
+  let view = [];         // filtered + sorted indices
+  let rendered = 0;
+  let snapDate = "";
+  let openBib = null;
+
+  fetch("/api/catalogue").then(r => r.json()).then(d => {
+    if (d.error) { $("list").innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
+    items = d.items; snapDate = d.date;
+    normed = items.map(r => norm(r[0] + " " + r[1] + " " + r[2]));
+    $("stats").textContent = `${d.count.toLocaleString("en")} books · snapshot ${d.date}`;
+    apply();
+  });
+
+  function apply() {
+    const q = norm($("q").value.trim());
+    const terms = q ? q.split(/\s+/) : [];
+    const y1 = parseInt($("y1").value) || 0;
+    const y2 = parseInt($("y2").value) || 9999;
+    view = [];
+    for (let i = 0; i < items.length; i++) {
+      if (terms.length && !terms.every(t => normed[i].includes(t))) continue;
+      if (y1 > 0 || y2 < 9999) {
+        const y = parseInt(items[i][3]) || 0;
+        if (!y || y < y1 || y > y2) continue;
+      }
+      view.push(i);
+    }
+    const s = $("sort").value;
+    if (s === "author") view.sort((a, b) => (items[a][1] || "￿").localeCompare(items[b][1] || "￿"));
+    else if (s === "new") view.sort((a, b) => (items[b][3] || "0").localeCompare(items[a][3] || "0"));
+    else if (s === "old") view.sort((a, b) => (items[a][3] || "9999").localeCompare(items[b][3] || "9999"));
+    // default: snapshot order is already title-sorted
+    $("count").textContent = `${view.length.toLocaleString("en")} shown`;
+    $("list").innerHTML = view.length ? "" : '<div class="empty">No books match.</div>';
+    rendered = 0; openBib = null;
+    renderMore();
+  }
+
+  function rowHTML(r) {
+    const bits = [r[1], r[2]].filter(Boolean).join(" — ");
+    return `<div class="rowline" tabindex="0" role="button" data-bib="${r[5]}" aria-expanded="false">
+      <div class="t">${esc(r[0])}</div>
+      <div class="y">${r[3] || ""}</div>
+      <div class="a">${esc(bits)}${r[4] ? ` · ISBN ${r[4]}` : ""}</div>
+    </div>`;
+  }
+
+  function renderMore() {
+    if (rendered >= view.length) return;
+    const frag = view.slice(rendered, rendered + CHUNK).map(i => rowHTML(items[i])).join("");
+    $("list").insertAdjacentHTML("beforeend", frag);
+    rendered += CHUNK;
+  }
+
+  new IntersectionObserver(es => { if (es[0].isIntersecting) renderMore(); },
+    { rootMargin: "800px" }).observe($("sentinel"));
+
+  let deb;
+  ["q", "y1", "y2"].forEach(id => $(id).addEventListener("input", () => {
+    clearTimeout(deb); deb = setTimeout(apply, 180);
+  }));
+  $("sort").addEventListener("change", apply);
+
+  // ---- expandable live availability ----
+  function chipClass(status) {
+    const s = status.toLowerCase();
+    if (s.includes("available") || s.includes("disponible")) return "ok";
+    if (s.startsWith("due") || s.includes("venc")) return "due";
+    return "other";
+  }
+  function toggle(rowEl) {
+    const bib = rowEl.dataset.bib;
+    document.querySelectorAll(".detail").forEach(el => el.remove());
+    document.querySelectorAll(".rowline[aria-expanded='true']").forEach(el => el.setAttribute("aria-expanded", "false"));
+    if (openBib === bib) { openBib = null; return; }
+    openBib = bib;
+    rowEl.setAttribute("aria-expanded", "true");
+    const r = items[view.find(i => items[i][5] === bib)] || items.find(x => x[5] === bib);
+    const cover = r && r[4] ? `<img src="https://portadesbd.diba.cat/img.php?isbn=${r[4]}&m=g" alt="" onerror="this.remove()">` : "";
+    rowEl.insertAdjacentHTML("afterend", `<div class="detail" data-for="${bib}">${cover}
+      <div class="meta">
+        <div class="pub">${esc(r ? r[2] : "")}</div>
+        <div class="copies-slot"><span class="loading">Checking live availability…</span></div>
+        <div class="links"><a href="https://aladi.diba.cat/record=${bib}~S171*eng" target="_blank" rel="noopener">Open record on aladi.diba.cat ↗</a></div>
+      </div></div>`);
+    fetch(`/api/availability?bib=${bib}`).then(r => r.json()).then(d => {
+      const slot = document.querySelector(`.detail[data-for="${bib}"] .copies-slot`);
+      if (!slot) return;
+      if (d.error) { slot.innerHTML = `<span class="empty">Availability lookup failed: ${esc(d.error)}</span>`; return; }
+      if (!d.copies.length) { slot.innerHTML = '<span class="empty">No copy list on the record page (may be an e-resource or multi-volume set — check the record link below).</span>'; return; }
+      const avail = d.copies.filter(c => chipClass(c.status) === "ok").length;
+      slot.innerHTML = `<p style="margin:0 0 6px;font-size:13.5px"><strong>${avail}</strong> of ${d.copies.length} ${d.copies.length === 1 ? "copy" : "copies"} available now</p>
+        <div style="overflow-x:auto"><table class="copies"><tr><th>Library</th><th>Call number</th><th>Status</th></tr>
+        ${d.copies.map(c => `<tr><td>${esc(c.location)}</td><td>${esc(c.call)}</td>
+          <td><span class="chip ${chipClass(c.status)}">${esc(c.status)}</span></td></tr>`).join("")}
+        </table></div>`;
+    });
+  }
+  $("list").addEventListener("click", e => {
+    const row = e.target.closest(".rowline");
+    if (row) toggle(row);
+  });
+  $("list").addEventListener("keydown", e => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("rowline")) {
+      e.preventDefault(); toggle(e.target);
+    }
+  });
+
+  // ---- CSV export of the current filter ----
+  $("export").addEventListener("click", e => {
+    const rows = [["title", "author", "publisher", "year", "isbn", "record_id", "permalink"]];
+    for (const i of view) {
+      const r = items[i];
+      rows.push([r[0], r[1], r[2], r[3], r[4], r[5], `https://aladi.diba.cat/record=${r[5]}~S171*eng`]);
+    }
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    e.target.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
+  });
+
+  // ---- tabs / weekly changes ----
+  function selectTab(cat) {
+    $("tab-cat").setAttribute("aria-selected", cat);
+    $("tab-diff").setAttribute("aria-selected", !cat);
+    $("toolbar").style.display = cat ? "" : "none";
+    $("list").hidden = !cat; $("sentinel").hidden = !cat;
+    $("diffs").hidden = cat;
+    if (!cat) loadDiffs();
+  }
+  $("tab-cat").onclick = () => selectTab(true);
+  $("tab-diff").onclick = () => selectTab(false);
+
+  let diffsLoaded = false;
+  function loadDiffs() {
+    if (diffsLoaded) return; diffsLoaded = true;
+    fetch("/api/diffs").then(r => r.json()).then(list => {
+      if (!list.length) {
+        $("diffs").innerHTML = '<div class="empty">No weekly diffs yet — they appear after the second weekly run (run <code>python3 diff.py</code> after a new snapshot).</div>';
+        return;
+      }
+      $("diffs").innerHTML = list.map(d => {
+        const li = r => `<li>${esc(r[0])} <span class="who">${esc(r[1] || "")}${r[3] ? " · " + r[3] : ""}</span></li>`;
+        return `<div class="diffcard">
+          <header><h3>${d.from} → ${d.to}</h3>
+          <span class="nums">${d.counts.from.toLocaleString("en")} → ${d.counts.to.toLocaleString("en")} books ·
+          <span class="plus">+${d.counts.added}</span> / <span class="minus">−${d.counts.removed}</span> / ~${d.counts.changed} edited</span></header>
+          <div class="cols">
+            <div><h4>Added (${d.counts.added})</h4><ul>${d.added.slice(0, 400).map(li).join("") || "<li>none</li>"}</ul>
+              ${d.added.length > 400 ? `<p class="empty">…and ${d.added.length - 400} more (see JSON report)</p>` : ""}</div>
+            <div><h4>Removed (${d.counts.removed})</h4><ul>${d.removed.slice(0, 400).map(li).join("") || "<li>none</li>"}</ul>
+              ${d.removed.length > 400 ? `<p class="empty">…and ${d.removed.length - 400} more (see JSON report)</p>` : ""}</div>
+          </div></div>`;
+      }).join("");
+    });
+  }
+})();
+</script>
+</body>
+</html>
