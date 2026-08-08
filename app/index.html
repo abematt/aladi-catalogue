@@ -91,12 +91,21 @@
   .typechips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .typechips button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .genrechips { border-top: 1px dotted var(--hairline); padding-top: 8px; }
+  .typechips[hidden] { display: none; }
   .genrechips button { font-size: 12px; padding: 2px 9px; }
   .genrechips .cov { color: var(--muted); font-size: 12px; align-self: center; margin-left: auto; font-variant-numeric: tabular-nums; }
   .rowline .y .k {
     display: block; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--muted); text-align: right;
   }
+  .gbtn {
+    display: block; margin-left: auto; margin-top: 3px;
+    font: inherit; font-size: 11px; color: var(--muted);
+    background: none; border: 1px solid var(--hairline); border-radius: 6px;
+    padding: 1px 7px; cursor: pointer;
+  }
+  .gbtn:hover { color: var(--accent); border-color: var(--accent); }
+  .gbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .toolbar a.export { color: var(--accent); font-size: 13px; text-decoration: none; }
   .toolbar a.export:hover { text-decoration: underline; }
   main { max-width: 980px; margin: 0 auto; padding: 0 24px 80px; }
@@ -342,14 +351,17 @@
     renderMore();
   }
 
+  const GOOGLE_TYPES = new Set(["a", "j", "d"]);   // books + CDs + vinyl
   function rowHTML(r) {
     const bits = [r[1], r[2]].filter(Boolean).join(" — ");
     const ty = r[6] || "a";
     const ref = r[4] ? ` · ${ty === "a" ? "ISBN" : "EAN"} ${r[4]}` : "";
     const tag = ty !== "a" ? `<span class="k">${TYPE_ONE[ty] || ty}</span>` : "";
+    const g = GOOGLE_TYPES.has(ty)
+      ? `<button class="gbtn" data-bib="${r[5]}" title="Search Google for this ${TYPE_ONE[ty]}">Google ↗</button>` : "";
     return `<div class="rowline" tabindex="0" role="button" data-bib="${r[5]}" aria-expanded="false">
       <div class="t">${esc(r[0])}</div>
-      <div class="y">${r[3] || ""}${tag}</div>
+      <div class="y">${r[3] || ""}${tag}${g}</div>
       <div class="a">${esc(bits)}${ref}</div>
     </div>`;
   }
@@ -408,6 +420,14 @@
     });
   }
   $("list").addEventListener("click", e => {
+    const gb = e.target.closest(".gbtn");
+    if (gb) {
+      e.stopPropagation();
+      const r = items.find(x => x[5] === gb.dataset.bib);
+      if (r) window.open("https://www.google.com/search?q=" +
+        encodeURIComponent([r[1], r[0]].filter(Boolean).join(" ")), "_blank", "noopener");
+      return;
+    }
     const row = e.target.closest(".rowline");
     if (row) toggle(row);
   });
