@@ -31,6 +31,29 @@ UA = {"User-Agent": "Mozilla/5.0 (compatible; personal-catalogue-app)"}
 _avail_cache = {}  # bib -> (timestamp, payload)
 _avail_lock = threading.Lock()
 AVAIL_TTL = 300  # 5 min
+ENRICH_JSONL = os.path.join(ROOT, "data", "enrichment.jsonl")
+_enrich_cache = {"mtime": 0, "body": None}
+
+
+def enrichment_payload():
+    """Compact {bib: [form, aud, [genres]]} from the enrichment file (mtime-cached)."""
+    try:
+        mtime = os.path.getmtime(ENRICH_JSONL)
+    except OSError:
+        return b"{}"
+    if _enrich_cache["body"] is None or mtime != _enrich_cache["mtime"]:
+        out = {}
+        with open(ENRICH_JSONL) as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                if not r.get("miss"):
+                    out[r["bib"]] = [r.get("form", ""), r.get("aud", ""), r.get("genres", [])]
+        _enrich_cache["body"] = json.dumps(out, ensure_ascii=False).encode()
+        _enrich_cache["mtime"] = mtime
+    return _enrich_cache["body"]
 
 
 def latest_snapshot_path():
@@ -87,6 +110,13 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"error": "no snapshot yet — run scraper.py"}, 404)
             with open(p, "rb") as f:
                 data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        elif parsed.path == "/api/enrichment":
+            data = enrichment_payload()
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))

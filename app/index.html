@@ -90,6 +90,9 @@
   }
   .typechips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .typechips button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .genrechips { border-top: 1px dotted var(--hairline); padding-top: 8px; }
+  .genrechips button { font-size: 12px; padding: 2px 9px; }
+  .genrechips .cov { color: var(--muted); font-size: 12px; align-self: center; margin-left: auto; font-variant-numeric: tabular-nums; }
   .rowline .y .k {
     display: block; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
     color: var(--muted); text-align: right;
@@ -164,7 +167,11 @@
 
 <div class="toolbar" id="toolbar">
   <div class="typechips" id="typechips" role="group" aria-label="Material type"></div>
+  <div class="typechips genrechips" id="genrechips" role="group" aria-label="Genre" hidden></div>
   <input type="search" id="q" placeholder="Search title, author, publisher…" aria-label="Search">
+  <select id="decade" aria-label="Decade">
+    <option value="">Any decade</option>
+  </select>
   <input type="number" id="y1" placeholder="from" aria-label="Year from" min="1400" max="2030">
   <input type="number" id="y2" placeholder="to" aria-label="Year to" min="1400" max="2030">
   <select id="sort" aria-label="Sort">
@@ -200,15 +207,87 @@
   let snapDate = "";
   let openBib = null;
   let activeType = "";
+  let activeGenre = "";
+  let activeAud = "";
+  let enrich = {};       // bib -> [form, aud, [genres]]
+  let nBooks = 0;
 
   fetch("/api/catalogue").then(r => r.json()).then(d => {
     if (d.error) { $("list").innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
     items = d.items; snapDate = d.date;
+    nBooks = items.filter(r => (r[6] || "a") === "a").length;
     normed = items.map(r => norm(r[0] + " " + r[1] + " " + r[2]));
     $("stats").textContent = `${d.count.toLocaleString("en")} items · snapshot ${d.date}`;
     buildChips();
+    buildDecades();
     apply();
+    loadEnrichment();
   });
+
+  function loadEnrichment() {
+    fetch("/api/enrichment").then(r => r.json()).then(e => {
+      enrich = e;
+      buildGenreChips();
+      if (activeGenre || activeAud) apply();
+      // enrichment trickles in in the background — poll until books are covered
+      if (Object.keys(e).length < nBooks) setTimeout(loadEnrichment, 90000);
+    });
+  }
+
+  function buildDecades() {
+    const now = 2030;
+    let opts = '<option value="">Any decade</option>';
+    for (let d0 = 2020; d0 >= 1900; d0 -= 10) opts += `<option value="${d0}">${d0}s</option>`;
+    opts += '<option value="old">Before 1900</option>';
+    $("decade").innerHTML = opts;
+    $("decade").addEventListener("change", () => {
+      const v = $("decade").value;
+      if (!v) { $("y1").value = ""; $("y2").value = ""; }
+      else if (v === "old") { $("y1").value = ""; $("y2").value = 1899; }
+      else { $("y1").value = v; $("y2").value = +v + 9; }
+      apply();
+    });
+  }
+
+  const KID_AUD = new Set(["a", "b", "c", "j"]);
+  function buildGenreChips() {
+    const el = $("genrechips");
+    if (activeType !== "a") { el.hidden = true; return; }
+    const counts = {};
+    for (const r of items) {
+      if ((r[6] || "a") !== "a") continue;
+      const e = enrich[r[5]];
+      if (e) for (const g of e[2]) counts[g] = (counts[g] || 0) + 1;
+    }
+    const order = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    const chip = (val, label, n, kind) =>
+      `<button aria-pressed="${(kind === "aud" ? activeAud : activeGenre) === val}"
+        data-kind="${kind}" data-val="${val}">${label}${n ? " " + n.toLocaleString("en") : ""}</button>`;
+    const covered = Object.keys(enrich).length;
+    const audCounts = { kids: 0, teen: 0 };
+    for (const b in enrich) {
+      if (KID_AUD.has(enrich[b][1])) audCounts.kids++;
+      else if (enrich[b][1] === "d") audCounts.teen++;
+    }
+    el.innerHTML =
+      order.map(g => chip(g, g, counts[g], "genre")).join("") +
+      chip("kids", "👶 Kids", audCounts.kids, "aud") + chip("d", "Teen", audCounts.teen, "aud") +
+      `<span class="cov">${covered >= nBooks ? "all books classified"
+        : `classifying… ${Math.round(covered / nBooks * 100)}%`}</span>`;
+    el.hidden = order.length === 0;
+    if (!el.dataset.wired) {
+      el.dataset.wired = "1";
+      el.addEventListener("click", e => {
+        const b = e.target.closest("button");
+        if (!b) return;
+        if (b.dataset.kind === "aud") activeAud = activeAud === b.dataset.val ? "" : b.dataset.val;
+        else activeGenre = activeGenre === b.dataset.val ? "" : b.dataset.val;
+        el.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed",
+          x.dataset.val === (x.dataset.kind === "aud" ? activeAud : activeGenre)));
+        apply();
+      });
+    }
+  }
 
   function buildChips() {
     const counts = {};
@@ -222,8 +301,10 @@
       const b = e.target.closest("button");
       if (!b) return;
       activeType = b.dataset.type;
+      if (activeType !== "a") { activeGenre = ""; activeAud = ""; }
       $("typechips").querySelectorAll("button").forEach(x =>
         x.setAttribute("aria-pressed", x.dataset.type === activeType));
+      buildGenreChips();
       apply();
     });
   }
@@ -236,6 +317,13 @@
     view = [];
     for (let i = 0; i < items.length; i++) {
       if (activeType && (items[i][6] || "a") !== activeType) continue;
+      if (activeGenre || activeAud) {
+        const e = enrich[items[i][5]];
+        if (!e) continue;
+        if (activeGenre && !e[2].includes(activeGenre)) continue;
+        if (activeAud === "kids" && !KID_AUD.has(e[1])) continue;
+        if (activeAud === "d" && e[1] !== "d") continue;
+      }
       if (terms.length && !terms.every(t => normed[i].includes(t))) continue;
       if (y1 > 0 || y2 < 9999) {
         const y = parseInt(items[i][3]) || 0;
@@ -298,9 +386,11 @@
     rowEl.setAttribute("aria-expanded", "true");
     const r = items[view.find(i => items[i][5] === bib)] || items.find(x => x[5] === bib);
     const cover = r && r[4] ? `<img src="https://portadesbd.diba.cat/img.php?isbn=${r[4]}&m=g" alt="" onerror="this.remove()">` : "";
+    const eg = enrich[bib];
+    const gline = eg && eg[2].length ? `<div class="pub">${eg[2].map(esc).join(" · ")}</div>` : "";
     rowEl.insertAdjacentHTML("afterend", `<div class="detail" data-for="${bib}">${cover}
       <div class="meta">
-        <div class="pub">${esc(r ? r[2] : "")}</div>
+        <div class="pub">${esc(r ? r[2] : "")}</div>${gline}
         <div class="copies-slot"><span class="loading">Checking live availability…</span></div>
         <div class="links"><a href="https://aladi.diba.cat/record=${bib}~S171*eng" target="_blank" rel="noopener">Open record on aladi.diba.cat ↗</a></div>
       </div></div>`);
