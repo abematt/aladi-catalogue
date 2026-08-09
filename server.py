@@ -22,6 +22,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 PORT = 8377
 ROOT = os.path.dirname(os.path.abspath(__file__))
+BIND = os.environ.get("ALADI_BIND", "127.0.0.1")
 SNAP_DIR = os.path.join(ROOT, "data", "snapshots")
 DIFF_DIR = os.path.join(ROOT, "data", "diffs")
 BASE = "https://aladi.diba.cat"
@@ -167,5 +168,5 @@ if __name__ == "__main__":
     class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
         daemon_threads = True
 
-    print(f"Aladi catalogue → http://localhost:{PORT}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    print(f"Aladi catalogue → {BIND}:{PORT}")
+    ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
