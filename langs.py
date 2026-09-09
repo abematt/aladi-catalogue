@@ -23,7 +23,7 @@ LANGS = {
         "code": "eng",
         "label": "English",
         "native": "english",
-        "main_q": "and+or+or+the+or+a+or+in+or+de+or+of",
+        "main_q": "and+or+the+or+a+or+in+or+de+or+of",
         "residual_terms": [
             "s", "i", "la", "el", "en", "es", "on", "for", "is", "by", "my", "un",
             "le", "y", "o", "no", "new", "love", "art", "con", "per", "del", "que",
