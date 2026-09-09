@@ -130,7 +130,7 @@ LOGIN_PAGE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in · Aladí English Catalogue</title>
+<title>Sign in · Aladí Catalogue</title>
 <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -181,7 +181,7 @@ LOGIN_PAGE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<nav class="news-nav"><a class="news-nav-logo" href="/">ALADÍ <em>/ english</em></a><div class="news-nav-right"><span class="eyebrow">private shelf</span><button class="icon-btn" id="themebtn" type="button" title="Toggle light / dark" aria-label="Toggle light or dark theme">◐</button></div></nav>
+<nav class="news-nav"><a class="news-nav-logo" href="/">ALADÍ <em>/ {{langs_native}}</em></a><div class="news-nav-right"><span class="eyebrow">private shelf</span><button class="icon-btn" id="themebtn" type="button" title="Toggle light / dark" aria-label="Toggle light or dark theme">◐</button></div></nav>
 <main>
   <div class="card">
     <span class="eyebrow">Sign in</span>
@@ -196,7 +196,7 @@ LOGIN_PAGE = """<!DOCTYPE html>
     </form>
   </div>
 </main>
-<footer><span class="eyebrow">aladi.diba.cat · english-language items · weekly sync</span></footer>
+<footer><span class="eyebrow">aladi.diba.cat · {{langs_labels}} items · weekly sync</span></footer>
 <script>
   document.getElementById("themebtn").addEventListener("click", function () {
     var root = document.documentElement, cur = root.getAttribute("data-theme");
@@ -212,9 +212,16 @@ LOGIN_PAGE = """<!DOCTYPE html>
 
 
 def render_login(error="", user="", nxt="/"):
+    # No language is chosen until the app loads, so the sign-in page just names
+    # the catalogues — straight from the registry, so a new language shows up
+    # here without another edit.
+    natives = [c["native"] for c in langs.LANGS.values()]
+    labels = [c["label"].lower() for c in langs.LANGS.values()]
     page = LOGIN_PAGE
     for k, v in {"error": htmllib.escape(error), "err_hidden": "" if error else "hidden",
-                 "user": htmllib.escape(user), "next": htmllib.escape(nxt)}.items():
+                 "user": htmllib.escape(user), "next": htmllib.escape(nxt),
+                 "langs_native": htmllib.escape(" · ".join(natives)),
+                 "langs_labels": htmllib.escape(" & ".join(labels))}.items():
         page = page.replace("{{%s}}" % k, v)
     return page.encode()
 
