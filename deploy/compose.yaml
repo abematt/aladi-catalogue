@@ -15,6 +15,11 @@ services:
       context: ..
     restart: unless-stopped
     init: true
+    # ALADI_USERS / ALADI_SECRET live in /srv/aladi/.env on the box (chmod 600,
+    # never in git). Optional so the same file also works without one.
+    env_file:
+      - path: ../.env
+        required: false
     volumes:
       - ../data:/app/data
     networks:

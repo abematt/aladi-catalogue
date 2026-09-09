@@ -2,3 +2,4 @@ data/
 logs/
 nohup.out
 .DS_Store
+.env
