@@ -14,7 +14,7 @@ CLAUDE.md files does not apply here.
 | `scraper.py` | Weekly full sync of the OPAC → `data/snapshots/YYYY-MM-DD.json` + `.csv`. Broad boolean keyword query + ~40 residual `AND NOT` sweeps per material type (the OPAC caps results at 32k and has no list-all). Resumable (`--resume`), `--materials=a,j,...` to scope. |
 | `enrich.py` | Per-record MARC data via **Z39.50** (`yaz-client`, port 210, db INNOPAC — the sanctioned machine interface). Derives `form`/`aud` (008), genre buckets from Catalan subject headings + English titles, and **holding-library codes** (907 `$i`). Incremental; `--rederive` recomputes genres locally from stored subjects without network. |
 | `diff.py` | Diffs two newest snapshots → `data/diffs/`. |
-| `server.py` | App + JSON API on **localhost:8377**: `/api/catalogue`, `/api/enrichment`, `/api/libraries`, `/api/diffs`, `/api/availability?bib=` (live per-copy status proxied from the record page, 5-min cache). |
+| `server.py` | App + JSON API on port 8377 (bind via `ALADI_BIND`, default localhost): `/api/catalogue`, `/api/enrichment`, `/api/libraries`, `/api/diffs`, `/api/availability?bib=` (live per-copy status proxied from the record page, 5-min cache). Optional in-app login (`/login`, `/logout`, signed session cookie) when `ALADI_USERS` is set — see Deployment. |
 | `app/index.html` | Single-file UI: type chips, genre/audience chips (books), decade/year, library picker ("my libraries" in localStorage — selecting libraries IS the filter), Google-search buttons, live availability on row click, CSV export, weekly-changes tab. |
 | `run_weekly.sh` | scrape → diff → enrich; scheduled by launchd `com.abraham.aladi-weekly` (Sun 07:30, plist in repo + `~/Library/LaunchAgents`). |
 
@@ -68,3 +68,4 @@ compose interpolates env files. Only Abraham and Fefi have users.
   The Mac launchd job `com.abraham.aladi-weekly` was retired the same day (plist
   moved to `~/Library/LaunchAgents.retired/`; the copy in this repo is inert).
 - The Mac's `data/` is now a frozen copy for local dev only.
+- Day-to-day operations (logs, redeploy, add a user, cron check): README → "Running in production".

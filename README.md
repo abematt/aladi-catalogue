@@ -68,3 +68,27 @@ rm ~/Library/LaunchAgents/com.abraham.aladi-weekly.plist
   main risk is server-side throttling if concurrency is raised — don't.
 - If this ever needs to be more than personal, ask Diba for an export, or check
   their Z39.50 service (the standard protocol for programmatic catalog queries).
+
+## Running in production
+
+Live at **https://<private host>** (since 2026-09-09) on the Hetzner box
+shared with the ledger and drive apps (`~/ledger/docs/server-handoff.md` describes the
+box). Stack: `deploy/compose.yaml` behind the box's shared Caddy, which owns TLS.
+Sign-in is in the app: two accounts, 30-day session cookie, lockout after six bad
+attempts. Google is told not to index it, and the OPAC's politeness rules still apply
+(one scrape a week, availability lookups only on click).
+
+| Task | How |
+|---|---|
+| Deploy a code change | `deploy/push.sh root@<box>` (rsyncs code, rebuilds, restarts; never touches `data/`, `logs/`, `.env`) |
+| Watch the app | `ssh root@<box> docker logs -f aladi-web-1` |
+| Check the weekly run | on the box: `tail /srv/aladi/logs/cron.log`, `ls /srv/aladi/logs/`, `ls /srv/aladi/data/snapshots/` — cron line via `crontab -l` (Sundays 07:30 Europe/Madrid) |
+| Run the weekly job by hand | on the box: `cd /srv/aladi && docker compose -f deploy/compose.yaml run --rm jobs` (a full scrape — don't do this casually) |
+| Add or change a login | `python3 server.py --hash-password` → write `name:hash` into `ALADI_USERS` in `/srv/aladi/.env` **with every `$` doubled to `$$`**, then on the box `docker compose -f deploy/compose.yaml up -d` |
+| Sign everyone out | change `ALADI_SECRET` in `/srv/aladi/.env`, then `up -d` |
+| Restart | on the box: `cd /srv/aladi && docker compose -f deploy/compose.yaml restart` |
+
+Things that will bite: `.env` values are interpolated by compose (hence `$$`); the
+ledger's stack is compose project `deploy`, so never run `down --remove-orphans` on the
+box; the box's `data/` is the source of truth — never rsync `data/` from the Mac again.
+Local dev is unchanged: `python3 server.py` on localhost with no login.

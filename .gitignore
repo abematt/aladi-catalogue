@@ -3,3 +3,4 @@ logs/
 nohup.out
 .DS_Store
 .env
+__pycache__/
