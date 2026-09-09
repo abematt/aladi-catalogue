@@ -1,0 +1,32 @@
+# Server stack for the Hetzner box. HTTPS + basic auth come from the box's
+# shared Caddy (/srv/caddy), which proxies <private host> ->
+# aladi:8377 over the external "web" network. Nothing here publishes a port.
+# Run from /srv/aladi on the box:
+#   docker compose -f deploy/compose.yaml up -d --build
+#   docker compose -f deploy/compose.yaml run --rm jobs      # weekly (cron)
+services:
+  web:
+    image: aladi
+    build:
+      context: ..
+    restart: unless-stopped
+    init: true
+    volumes:
+      - ../data:/app/data
+    networks:
+      default: {}
+      web:
+        aliases: [aladi]
+
+  jobs:
+    image: aladi
+    profiles: ["jobs"]
+    init: true
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+    command: ["./run_weekly.sh"]
+
+networks:
+  web:
+    external: true
