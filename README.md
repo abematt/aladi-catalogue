@@ -11,7 +11,7 @@ Two catalogues today, switchable from the wordmark in the app's header:
 | Language | Code | Scale |
 |---|---|---|
 | English | `eng` | ~64.5k items |
-| Italian | `ita` | ~6.8k items |
+| Italian | `ita` | ~7.7k items |
 
 Built because the OPAC has no "browse everything in one language" view — its
 language filter only applies on top of a keyword search.

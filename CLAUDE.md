@@ -8,7 +8,7 @@ site doesn't have. Standalone repo — the Measure workspace guidance in ancesto
 CLAUDE.md files does not apply here.
 
 **Two catalogues, switchable in the app header:** English (`eng`, ~64.5k items)
-and Italian (`ita`, ~6.8k, added 2026-09-09). `langs.py` is the registry — the
+and Italian (`ita`, ~7.7k, added 2026-09-09). `langs.py` is the registry — the
 one place that knows which catalogues exist, with each language's broad query
 and residual sweeps. Every script defaults to English and takes `--lang=<code>`;
 state is per language under `data/<lang>/` (`snapshots/`, `diffs/`,
