@@ -58,9 +58,9 @@ libraries" selection.
 ### Adding another language
 
 **Full runbook: [docs/adding-a-language.md](docs/adding-a-language.md)** — the
-OPAC's language menu, how to size a candidate before committing (two languages
-are too big to add as-is), the registry entry, verification, the genre-rule
-traps, and the deploy order.
+OPAC's language menu, how to size a candidate before committing (Catalan and
+Spanish are both far too large — they're the local languages), the registry
+entry, verification, the genre-rule traps, and the deploy order.
 
 The short version: add an entry to `langs.py` with a `main_q` of that
 language's commonest stopwords plus a `residual_terms` list, then run the three

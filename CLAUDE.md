@@ -17,8 +17,10 @@ libraries" selection — branch codes are language-independent. Adding a languag
 = one entry in `langs.py` + a scrape; the server and UI pick it up from
 `/api/languages`. **Before adding one, read
 [`docs/adding-a-language.md`](docs/adding-a-language.md)** — it has the runbook,
-the sizing check (Catalan is at the OPAC's 32k cap and Spanish 502s on a broad
-query, so neither is a drop-in), and the genre-rule traps.
+the sizing check (**Catalan and Spanish are both too large** — they're the local
+languages; Spanish is ~300–450k books, needing per-year slicing and ~40k
+requests a sync, so it's out on politeness and payload grounds, not
+feasibility), and the genre-rule traps.
 
 ## Components (all pure Python stdlib; the one binary dep is `yaz-client`)
 

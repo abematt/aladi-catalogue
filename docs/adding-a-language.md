@@ -50,8 +50,31 @@ a broad query of that language's commonest stopwords and read the count:
 import scraper, re
 q = "et+or+de+or+la+or+le+or+les+or+un+or+une+or+des+or+du+or+pour"   # French
 body = scraper.get(f"{scraper.BASE}/search~S171*eng/X?SEARCH={q}&l=fre&m=a&SORT=AX")
-print(re.search(r"(\d+) results found", body).group(1))
+m = re.search(r"(\d+) results found", body or "")
+n = m.group(1) if m else None
+print(n or "NO COUNT — probably a 502: result set too large")
+if n == "32000":
+    print("AT THE REPORTING CAP — the real total is unknown and larger")
 ```
+
+Read the answer as one of three outcomes:
+
+| Result | Meaning | Do |
+|---|---|---|
+| A number below ~30,000 | Normal | Proceed |
+| Exactly `32000` | The OPAC's reporting cap — true total unknown | Stop; size by year (below) |
+| No count / HTTP 502 | Result set too large for the server | Stop; size by year (below) |
+
+To size a language that hits either wall, slice by publication year — the search
+URL takes `&Da=<from>&Db=<to>`, and the counts narrow correctly:
+
+```python
+scraper.get(f"{scraper.BASE}/search~S171*eng/X"
+            f"?SEARCH={q}&l=spa&m=a&SORT=AX&Da=2015&Db=2015")   # one year
+```
+
+Sample a handful of years, multiply out, and report the estimate before writing
+any code.
 
 Measured 2026-09-09 (books only, so total items run higher):
 
@@ -62,34 +85,59 @@ Measured 2026-09-09 (books only, so total items run higher):
 | `ger` | German | 4,243 | easy |
 | `ita` | Italian | 5,283 | in the catalogue |
 | `por` | Portuguese | 1,897 | easy |
-| `spa` | Spanish | ~31,400+ | **problem** — see below |
-| `cat` | Catalan | 32,000 (capped) | **don't** — see below |
+| `spa` | Spanish | ~300–450k (est.) | **too big** — see below |
+| `cat` | Catalan | 32,000+ (capped) | **too big** — see below |
 
-### Two languages you can't just add
+### Two languages that don't fit this design
 
-**Catalan is at the cap.** The OPAC refuses to report more than 32,000 results,
-and Catalan returns exactly `32000` for even a single common word — meaning the
-true total is unknown and larger. The broad-query-plus-residuals approach
-assumes the main query returns a *countable* set it can page through; at the cap
-you have no idea what you're missing. Catalan would need a different strategy
-entirely (slicing by year or material before querying).
+**Catalan and Spanish are both far too large** — they're the local languages, so
+this is unsurprising: the network's Spanish holdings are an order of magnitude
+bigger than its English ones.
 
-**Spanish is big enough to break the server.** A very common word 502s outright:
+Two signals tell you a language is over the line, and both mean the same thing:
 
 ```
-spa "de"            -> HTTP 502 Bad Gateway
-spa "para"          -> 31,448 results
-spa "microbiologia" -> 119 results
+spa "de"                     -> HTTP 502 Bad Gateway     (result set too large)
+spa "el"                     -> 32000                    (the reporting cap)
+cat "de"                     -> 32000
 ```
 
-So a 502 is not always a transient blip — for a large language it's the OPAC
-giving up on the result set. If a broad query 502s repeatedly while narrower
-ones succeed, the query is too broad, not the server unwell. Retrying harder
-won't help and isn't polite; narrow the query instead.
+- **A count of exactly `32000`** is the OPAC's reporting ceiling, not a real
+  total. You can't page past what it won't count, so you have no idea what
+  you're missing.
+- **A 502 on a broad query while narrower ones succeed** is the OPAC giving up
+  on the result set, not a flaky server. Retrying harder won't help and isn't
+  polite — the query is too broad.
 
-The useful rule: **if the broad query returns 32,000, or 502s, the language
-needs a different approach and is not a drop-in addition.** Say so rather than
-scraping something incomplete.
+Slicing by publication year does work (`&Da=<from>&Db=<to>` on the search URL,
+and the counts narrow properly), so this is a *scale* problem, not an
+impossibility. But the scale is the point. Measured per-year Spanish book
+counts, with a broad query:
+
+| Year | Spanish books |
+|---|---|
+| 1970 | 1,240 |
+| 1990 | 2,796 |
+| 2000 | 7,539 |
+| 2010 | 10,183 |
+| 2024 | 8,876 |
+
+A whole *decade* still hits the cap, so Spanish would need **per-year** slices
+across ~130 years × 9 material types, and the catalogue is roughly
+**300,000–450,000 books**. That's ~40,000 page requests per sync against
+English's ~2,500 — an order of magnitude more load on a library OPAC whose
+robots.txt already asks us not to crawl `/search`. It would also take hours,
+and the data wouldn't fit the app's "load the whole catalogue into the browser"
+design (English is already a 7 MB payload).
+
+**So: don't.** Not because it's technically impossible, but because the
+politeness budget and the app's architecture both say no. If someone genuinely
+wants Spanish, that's a different app — server-side pagination, incremental
+sync, and a conversation about the request volume first.
+
+The rule to carry forward: **if the broad query returns 32,000 or 502s, stop and
+size the language by year before writing any code.** Report the numbers and let
+the human decide; don't quietly scrape something incomplete.
 
 ---
 
@@ -110,6 +158,15 @@ Everything language-specific lives in [`langs.py`](../langs.py):
 - **`main_q`** — the broad boolean query, `+or+` separated and URL-encoded. Aim
   for the commonest stopwords, enough to catch nearly everything in one search.
   Verify it against the OPAC before moving on (Step 1's snippet).
+
+  **Build it up term by term and watch the count rise.** A correct query grows
+  monotonically as you add terms (English: 11,366 → 22,142 → 26,415 → … →
+  28,621). If adding a term makes the count *fall*, the OPAC has mis-parsed
+  the query. Some very common words behave oddly in short queries —
+  `the+or+a` returns 60, fewer than `the` alone at 16,530 — while the same
+  word mid-query is fine (`and+or+the+or+a` → 26,415). Don't debug it; just
+  confirm your final query returns a plausible count, and don't judge a
+  language's size from a two-term probe.
 - **`residual_terms`** — follow-up `term AND NOT (main)` sweeps that catch
   records containing none of the main words. English needs ~42 of them because
   it runs close to the result cap; Italian's 36 returned single-digit extras,
@@ -350,7 +407,8 @@ tells you both the load and the wall-clock time.
 
 ```
 [ ] Code is in the OPAC's dropdown
-[ ] Broad query verified against the OPAC — returns a real count, not 32,000, not a 502
+[ ] Broad query verified against the OPAC — a real count, not 32,000, not a 502
+[ ] Query built up term by term; the count rises monotonically
 [ ] Registry entry added to langs.py (code, label, native, main_q, residual_terms)
 [ ] scraper.py --lang=<code> completed; snapshot count and material mix look plausible
 [ ] Read five titles — they really are in that language
