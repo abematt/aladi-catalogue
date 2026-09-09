@@ -4,6 +4,10 @@
 # Run from /srv/aladi on the box:
 #   docker compose -f deploy/compose.yaml up -d --build
 #   docker compose -f deploy/compose.yaml run --rm jobs      # weekly (cron)
+# Pin the project name: compose otherwise names it after the directory ("deploy"),
+# which collides with the ledger stack on the same box.
+name: aladi
+
 services:
   web:
     image: aladi
