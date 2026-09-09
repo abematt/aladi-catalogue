@@ -67,7 +67,8 @@ GENRE_RULES = [
     ("Music", ["musica", "musics", "cantants", "opera", " rock "]),
     ("Science & Nature", ["ciencia", "ciencies", "natura", "animals", "plantes", "univers",
                           "fisica", "biologia", "matemat", "medi ambient", "evolucio"]),
-    ("Language & Learning", ["angles", "italia", "llengua", "vocabulari", "diccionari", "gramatica",
+    ("Language & Learning", ["angles", "llengua", "vocabulari",
+                             "diccionari", "gramatica",
                              "ensenyament", "aprenentatge", "lectura"]),
     ("Self-help & Psychology", ["autoajuda", "psicologia", "creixement personal", "felicitat",
                                 "meditacio", "mindfulness"]),
@@ -104,7 +105,10 @@ TECH_RULES = [
                              "kubernetes", "internet de les coses", "xarxes d'ordinadors",
                              "computer network", "sicurezza informatica",
                              "crittografia", "reti di calcolatori"]),
-    ("Tech: Creative software", ["photoshop", "lightroom", "indesign", "illustrator",
+    # " illustrator " is space-padded on purpose: bare "illustrator" is a
+    # substring of "illustrators" and of Italian "illustratore/illustrazioni",
+    # which filed 38 books *about* illustrators as Adobe software.
+    ("Tech: Creative software", ["photoshop", "lightroom", "indesign", " illustrator ",
                                  "premiere", "autocad", "blender", "onshape",
                                  "programa d'ordinador", "disseny assistit"]),
     ("Tech: Maker & Hardware", ["raspberry", "arduino", "robotic", "electronic"]),
@@ -125,6 +129,20 @@ def latest_snapshot():
         return json.load(f)
 
 
+# Subject headings that ARE a language, as the catalogue writes them: the
+# language leads the heading ("Italià — Gramàtica"), whereas the country is
+# always a subdivision ("Música popular — Itàlia"). Diacritic folding maps
+# "Italià" and "Itàlia" to the same stem, so position is the only signal —
+# hence a prefix test rather than another substring key.
+LANG_SUBJECT_STEMS = ("angles", "italia", "frances", "alemany", "castella", "catala")
+
+
+def is_language_subject(folded_subject):
+    """True for "Italià — Gramàtica"; false for "Cuina — Itàlia"."""
+    head = folded_subject.split("—")[0].strip()
+    return head in LANG_SUBJECT_STEMS
+
+
 def derive_genres(form, subjects, title, bio):
     folded = [" " + fold(s) + " " for s in subjects]
     tfolded = " " + fold(title) + " "
@@ -132,6 +150,8 @@ def derive_genres(form, subjects, title, bio):
     for name, keys in GENRE_RULES:
         if any(k in s for s in folded for k in keys):
             genres.add(name)
+    if any(is_language_subject(fold(s)) for s in subjects):
+        genres.add("Language & Learning")
     for name, keys in TECH_RULES:
         if any(k in s for s in folded + [tfolded] for k in keys):
             genres.add(name)
