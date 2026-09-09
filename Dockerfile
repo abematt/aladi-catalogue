@@ -5,6 +5,7 @@ RUN apt-get update && \
 WORKDIR /app
 COPY app ./app
 COPY ./*.py .
+COPY run_weekly.sh .
 ENV ALADI_BIND=0.0.0.0
 EXPOSE 8377
 CMD ["python","server.py"]

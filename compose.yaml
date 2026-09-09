@@ -1,0 +1,19 @@
+services:
+  web:
+    image: aladi
+    build: .
+    ports: 
+      - "127.0.0.1:18377:8377"
+    volumes: 
+      - ./data:/app/data
+    restart: unless-stopped
+    init: true
+  jobs: 
+    image: aladi
+    profiles: ["jobs"]
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    init: true 
+    command: "./run_weekly.sh"
+
