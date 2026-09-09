@@ -125,6 +125,7 @@ LOGIN_PAGE = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in · Aladí English Catalogue</title>
+<script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Playfair+Display:wght@400;500;600;700&display=swap">
@@ -165,12 +166,16 @@ LOGIN_PAGE = """<!DOCTYPE html>
   .cta-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .error { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink); background: var(--hi); padding: 8px 10px; margin: 0; }
   .error[hidden] { display: none; }
+  .news-nav-right { display: flex; gap: 10px; align-items: center; }
+  .icon-btn { appearance: none; background: none; border: 1px solid var(--rule); border-radius: 0; width: 30px; height: 28px; display: grid; place-items: center; cursor: pointer; color: var(--ink); font-size: 13px; line-height: 1; transition: border-color 0.15s; }
+  .icon-btn:hover { border-color: var(--ink); }
+  .icon-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
   footer { padding: 14px 24px; border-top: 1px solid var(--rule); }
   @media (max-width: 460px) { h1 { font-size: 30px; } main { padding-top: 36px; } }
 </style>
 </head>
 <body>
-<nav class="news-nav"><a class="news-nav-logo" href="/">ALADÍ <em>/ english</em></a><span class="eyebrow">private shelf</span></nav>
+<nav class="news-nav"><a class="news-nav-logo" href="/">ALADÍ <em>/ english</em></a><div class="news-nav-right"><span class="eyebrow">private shelf</span><button class="icon-btn" id="themebtn" type="button" title="Toggle light / dark" aria-label="Toggle light or dark theme">◐</button></div></nav>
 <main>
   <div class="card">
     <span class="eyebrow">Sign in</span>
@@ -186,6 +191,15 @@ LOGIN_PAGE = """<!DOCTYPE html>
   </div>
 </main>
 <footer><span class="eyebrow">aladi.diba.cat · english-language items · weekly sync</span></footer>
+<script>
+  document.getElementById("themebtn").addEventListener("click", function () {
+    var root = document.documentElement, cur = root.getAttribute("data-theme");
+    var isDark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = isDark ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("theme", next); } catch (e) {}
+  });
+</script>
 </body>
 </html>
 """
