@@ -54,6 +54,16 @@ branch codes → names (scraped from the OPAC search form).
 - `S171*eng` in OPAC URLs is the site's **interface** language and stays `eng`
   for every catalogue; the *item* language is the `l=` query parameter. Record
   permalinks keep `~S171*eng` regardless of the item's language.
+- Genre keys are substring matches on **diacritic-folded** subjects, so folding
+  can collapse two different words: `italia` matches both "Italià" (the
+  language) and "Itàlia" (the country), and `illustrator` matches
+  "illustrators"/"illustratore". Space-padding fixes the second (a word that
+  only appears mid-string) but not the first, because both forms can end a
+  heading — there, position is the signal, since the catalogue writes a
+  language as the heading ("Italià — Gramàtica") and a country as a
+  subdivision ("Música popular — Itàlia"). Hence `is_language_subject()`.
+  After any rule change, `--rederive` both languages and diff the genre
+  counts before/after; a rule that looks right can move hundreds of records.
 - Switching language in the UI must invalidate the diff tab's load-once cache
   and guard in-flight fetches (a `loadSeq` counter) — otherwise a slow response
   for the language you just left overwrites the new one.
