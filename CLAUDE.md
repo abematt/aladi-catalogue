@@ -41,13 +41,22 @@ branch codes → names (scraped from the OPAC search form).
 - `$i none` in 907 = record with no copies attached (on-order); filtered out.
 - The `hidden` attribute loses to `display:flex` — `.typechips[hidden]` CSS rule.
 
-## Deployment (in progress — Abraham is building this HIMSELF to learn)
+## Deployment (live since 2026-09-09)
 
-Target: Hetzner VPS + Docker Compose (web + cloudflared + jobs-profile
-containers, shared data volume, host cron weekly), Cloudflare Tunnel + Access
-(Google login, two-email allow policy, no inbound ports except SSH), Terraform
-(hcloud + cloudflare providers), GitHub Actions → GHCR → SSH deploy.
-**Do not scaffold these files for him** — review what he writes, explain
-concepts, point at breakage. Known code prerequisite: `server.py` binds
-127.0.0.1; container needs an env-var bind address. Once the server owns the
-weekly run, disable the Mac launchd job.
+Runs as the third app on Abraham's Hetzner box (<box>, the same one as
+`~/ledger`; see `ledger/docs/server-handoff.md` for the box). URL:
+**https://<private host>**, behind the box's shared Caddy
+(`/srv/caddy/sites/aladi.caddy`: `basic_auth` with two users, `reverse_proxy aladi:8377`).
+No published ports; TLS and login live in Caddy, not here.
+
+- `deploy/compose.yaml` — server stack (`name: aladi`; `web` joins the external `web`
+  network with alias `aladi`; `jobs` profile for the weekly run). Root `compose.yaml`
+  is the local dev stack.
+- `deploy/push.sh root@<box>` — rsync code + `up -d --build`. **Excludes
+  `data/` and `logs/`**: the box's `data/` is the source of truth (seeded once by
+  rsync from the Mac on 2026-09-09). Never rsync data Mac → box again.
+- Weekly job: root's crontab on the box, `30 7 * * 0` (box TZ Europe/Madrid),
+  `docker compose -f deploy/compose.yaml run --rm jobs`, stdout in `logs/cron.log`.
+  The Mac launchd job `com.abraham.aladi-weekly` was retired the same day (plist
+  moved to `~/Library/LaunchAgents.retired/`; the copy in this repo is inert).
+- The Mac's `data/` is now a frozen copy for local dev only.
