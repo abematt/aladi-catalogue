@@ -57,11 +57,16 @@ libraries" selection.
 
 ### Adding another language
 
-The OPAC's own language list is the menu (`ita`, `lat`, `oci`, … as `l=` codes).
-Add an entry to `langs.py` with a `main_q` of that language's commonest
-stopwords plus a `residual_terms` list, then run the three scripts with the new
-`--lang=`. Nothing else needs touching: the server picks the language up from
-`/api/languages` and the app renders a new segment in the header switch.
+**Full runbook: [docs/adding-a-language.md](docs/adding-a-language.md)** — the
+OPAC's language menu, how to size a candidate before committing (two languages
+are too big to add as-is), the registry entry, verification, the genre-rule
+traps, and the deploy order.
+
+The short version: add an entry to `langs.py` with a `main_q` of that
+language's commonest stopwords plus a `residual_terms` list, then run the three
+scripts with the new `--lang=`. Nothing else needs touching — the server picks
+the language up from `/api/languages` and the app renders a new segment in the
+header switch.
 
 ### How the scrape covers "everything"
 
