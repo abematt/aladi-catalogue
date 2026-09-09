@@ -46,8 +46,16 @@ branch codes → names (scraped from the OPAC search form).
 Runs as the third app on Abraham's Hetzner box (<box>, the same one as
 `~/ledger`; see `ledger/docs/server-handoff.md` for the box). URL:
 **https://<private host>**, behind the box's shared Caddy
-(`/srv/caddy/sites/aladi.caddy`: `basic_auth` with two users, `reverse_proxy aladi:8377`).
-No published ports; TLS and login live in Caddy, not here.
+(`/srv/caddy/sites/aladi.caddy`: `reverse_proxy aladi:8377`, noindex header).
+No published ports; TLS lives in Caddy.
+
+**Login is in-app** (`server.py`): a styled `/login` page, signed 30-day session
+cookie, `/logout`, per-IP lockout after 6 failures. Enabled when `ALADI_USERS`
+is set (`name:pbkdf2$...` pairs) plus `ALADI_SECRET`; both live in
+`/srv/aladi/.env` on the box (chmod 600, gitignored, excluded from push.sh).
+Unset → no login, which is the local-dev default. New hash:
+`python3 server.py --hash-password`. **Escape every `$` in `.env` as `$$`** —
+compose interpolates env files. Only Abraham and Fefi have users.
 
 - `deploy/compose.yaml` — server stack (`name: aladi`; `web` joins the external `web`
   network with alias `aladi`; `jobs` profile for the weekly run). Root `compose.yaml`
