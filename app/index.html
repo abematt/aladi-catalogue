@@ -4,179 +4,419 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aladí · English Catalogue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600&family=Playfair+Display:wght@400;500;600;700&display=swap">
 <style>
+  /* ── Design tokens ───────────────────────────────────────────────
+     Newspaper/ledger language: paper ground, full-strength ink rules,
+     zero radius, no shadows. Monochrome throughout with a single
+     highlighter yellow reserved for "the thing you're looking for". */
   :root {
-    --ground: #FAF8F5;
-    --panel: #FFFFFF;
-    --ink: #211D1A;
-    --muted: #857D74;
-    --accent: #B3282D;
-    --hairline: #E7E2DB;
-    --ok: #2E7D4F;
-    --ok-bg: #E6F2EA;
-    --due: #9A6710;
-    --due-bg: #F7EDD8;
-    --other: #6B655E;
-    --other-bg: #EEEBE6;
-    --row-hover: #F3EFE9;
+    --bg:        #fafaf8;   /* paper */
+    --bg-darker: #f0efe8;   /* recessed paper */
+    --chalk:     #ffffff;   /* card surface */
+    --ink:       #0e0e0e;   /* text, hard rules */
+    --ink-light: #404040;
+    --mid:       #6b6b6b;   /* secondary text */
+    --rule:      #d8d8d4;   /* hairline */
+    --hi:        #f5e642;   /* highlighter */
+    --on-hi:     #0e0e0e;
+    --font-display: "Playfair Display", "Iowan Old Style", Georgia, "Times New Roman", serif;
+    --font-body:    "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono:    "DM Mono", ui-monospace, SFMono-Regular, Menlo, "Courier New", monospace;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --ground: #1B1917; --panel: #242120; --ink: #EDE9E4; --muted: #9C948A;
-      --accent: #E05A5F; --hairline: #383430;
-      --ok: #58B37E; --ok-bg: #24352B; --due: #D9A34A; --due-bg: #383021;
-      --other: #A29A90; --other-bg: #2E2B28; --row-hover: #2A2725;
+    :root:not([data-theme="light"]) {
+      --bg: #0a0a0a; --bg-darker: #141414; --chalk: #161616;
+      --ink: #f0f0f0; --ink-light: #a3a3a3; --mid: #9a9a9a; --rule: #2a2a2a;
     }
   }
   :root[data-theme="dark"] {
-    --ground: #1B1917; --panel: #242120; --ink: #EDE9E4; --muted: #9C948A;
-    --accent: #E05A5F; --hairline: #383430;
-    --ok: #58B37E; --ok-bg: #24352B; --due: #D9A34A; --due-bg: #383021;
-    --other: #A29A90; --other-bg: #2E2B28; --row-hover: #2A2725;
+    --bg: #0a0a0a; --bg-darker: #141414; --chalk: #161616;
+    --ink: #f0f0f0; --ink-light: #a3a3a3; --mid: #9a9a9a; --rule: #2a2a2a;
   }
-  :root[data-theme="light"] {
-    --ground: #FAF8F5; --panel: #FFFFFF; --ink: #211D1A; --muted: #857D74;
-    --accent: #B3282D; --hairline: #E7E2DB;
-    --ok: #2E7D4F; --ok-bg: #E6F2EA; --due: #9A6710; --due-bg: #F7EDD8;
-    --other: #6B655E; --other-bg: #EEEBE6; --row-hover: #F3EFE9;
-  }
+
   * { box-sizing: border-box; }
   body {
-    margin: 0; background: var(--ground); color: var(--ink);
-    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 var(--font-body);
+    -webkit-font-smoothing: antialiased;
   }
-  header {
-    padding: 28px 24px 0;
-    max-width: 980px; margin: 0 auto;
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  /* Micro-label: uppercase mono, the connective tissue of the whole design */
+  .eyebrow {
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--mid);
   }
-  .masthead { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+
+  /* ── Nav ─────────────────────────────────────────────────────── */
+  .news-nav {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    gap: 16px; padding: 13px 24px;
+    border-bottom: 1px solid var(--ink);   /* full ink, not hairline */
+    background: var(--bg); position: sticky; top: 0; z-index: 100;
+  }
+  .news-nav-logo {
+    grid-column: 1; justify-self: start;
+    font-family: var(--font-mono); font-size: 15px; font-weight: 500;
+    letter-spacing: -0.02em; color: var(--ink); text-decoration: none;
+  }
+  .news-nav-logo em { font-style: normal; opacity: 0.4; }
+  .news-nav-links {
+    grid-column: 2; display: flex; gap: 26px; list-style: none; margin: 0; padding: 0;
+  }
+  .news-nav-links button {
+    appearance: none; background: none; border: none; padding: 4px 0; cursor: pointer;
+    font-family: var(--font-body); font-size: 12px; color: var(--mid);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    border-bottom: 2px solid transparent; transition: color 0.15s;
+  }
+  .news-nav-links button:hover { color: var(--ink); }
+  .news-nav-links button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  .news-nav-right { grid-column: 3; justify-self: end; display: flex; gap: 10px; align-items: center; }
+  .icon-btn {
+    appearance: none; background: none; border: 1px solid var(--rule); border-radius: 0;
+    width: 30px; height: 28px; display: grid; place-items: center; cursor: pointer;
+    color: var(--ink); font-size: 13px; line-height: 1; transition: border-color 0.15s;
+  }
+  .icon-btn:hover { border-color: var(--ink); }
+  .cta-btn {
+    background: var(--hi); color: var(--on-hi); border: none; border-radius: 0;
+    padding: 7px 14px; cursor: pointer; text-decoration: none; display: inline-block;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.04em; transition: opacity 0.15s;
+  }
+  .cta-btn:hover { opacity: 0.82; }
+
+  /* ── Masthead ────────────────────────────────────────────────── */
+  .masthead { padding: 34px 0 22px; }
   .masthead h1 {
-    font-family: "Iowan Old Style", "New York", Georgia, serif;
-    font-size: 30px; font-weight: 600; margin: 0; letter-spacing: -0.01em;
+    font-family: var(--font-display); font-weight: 700;
+    font-size: 44px; line-height: 1.05; letter-spacing: -0.025em;
+    margin: 8px 0 0; max-width: 16ch;
   }
-  .masthead h1 .red { color: var(--accent); }
-  .stats { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
-  .tabs { display: flex; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--hairline); }
-  .tabs button {
-    appearance: none; background: none; border: none; border-bottom: 2px solid transparent;
-    font: inherit; font-size: 14px; font-weight: 500; color: var(--muted);
-    padding: 8px 14px; cursor: pointer;
+  .masthead .lede { color: var(--mid); font-size: 14px; margin: 12px 0 0; max-width: 56ch; }
+
+  /* ── Stat row ────────────────────────────────────────────────── */
+  /* 1px gaps over an ink-tinted ground = hairline dividers, no borders. */
+  .bento {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 1px; background: var(--rule); border: 1px solid var(--rule);
+    margin-bottom: 26px;
   }
-  .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
-  .tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .bstat { background: var(--chalk); padding: 18px 20px 16px; display: flex; flex-direction: column; }
+  .bnum {
+    font-size: 32px; font-weight: 600; letter-spacing: -0.04em; line-height: 1;
+    color: var(--ink); margin-top: 9px;
+    /* proportional figures: tabular is for columns, not display numbers */
+  }
+  .bnum.small { font-family: var(--font-mono); font-size: 19px; font-weight: 500; letter-spacing: -0.02em; }
+  .bsub { font-size: 11.5px; color: var(--mid); margin-top: 7px; line-height: 1.4; }
+  @media (max-width: 860px) { .bento { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 460px) { .bento { grid-template-columns: 1fr; } }
+
+  /* ── Toolbar ─────────────────────────────────────────────────── */
   .toolbar {
-    position: sticky; top: 0; z-index: 5;
-    background: var(--ground);
-    max-width: 980px; margin: 0 auto; padding: 14px 24px;
-    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    border-bottom: 1px solid var(--hairline);
+    position: sticky; top: 55px; z-index: 5; background: var(--bg);
+    max-width: 1040px; margin: 0 auto; padding: 12px 24px 14px;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink);
   }
   .toolbar input[type="search"], .toolbar input[type="number"], .toolbar select {
-    font: inherit; color: var(--ink); background: var(--panel);
-    border: 1px solid var(--hairline); border-radius: 7px; padding: 7px 10px;
+    font-family: var(--font-body); font-size: 13px; color: var(--ink);
+    background: var(--chalk); border: 1px solid var(--rule); border-radius: 0;
+    padding: 7px 10px;
   }
-  .toolbar input[type="search"] { flex: 1 1 260px; min-width: 200px; }
-  .toolbar input[type="number"] { width: 84px; font-variant-numeric: tabular-nums; }
-  .toolbar input:focus-visible, .toolbar select:focus-visible, .rowline:focus-visible {
-    outline: 2px solid var(--accent); outline-offset: 1px;
+  .toolbar input[type="search"] { flex: 1 1 240px; min-width: 190px; }
+  .toolbar input[type="number"] { width: 80px; font-variant-numeric: tabular-nums; }
+  .toolbar select { cursor: pointer; }
+  .toolbar input:focus-visible, .toolbar select:focus-visible,
+  .rowline:focus-visible, button:focus-visible, a:focus-visible {
+    outline: 2px solid var(--ink); outline-offset: 1px;
   }
-  .toolbar .count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; margin-left: auto; }
-  .typechips { flex: 1 1 100%; display: flex; gap: 6px; flex-wrap: wrap; }
+  .toolbar .count {
+    font-family: var(--font-mono); font-size: 11px; color: var(--mid);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums; margin-left: auto;
+  }
+
+  /* Chips. Primary filter = solid ink when on; secondary = highlighter. */
+  .typechips { flex: 1 1 100%; display: flex; gap: 5px; flex-wrap: wrap; }
   .typechips button {
-    appearance: none; font: inherit; font-size: 12.5px; font-weight: 550;
-    padding: 3px 11px; border-radius: 99px; border: 1px solid var(--hairline);
-    background: var(--panel); color: var(--muted); cursor: pointer;
-    font-variant-numeric: tabular-nums;
+    appearance: none; cursor: pointer; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 400;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 4px 10px; border: 1px solid var(--rule); border-radius: 0;
+    background: var(--chalk); color: var(--mid);
+    font-variant-numeric: tabular-nums; transition: border-color 0.12s, color 0.12s;
   }
-  .typechips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .typechips button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .genrechips { border-top: 1px dotted var(--hairline); padding-top: 8px; }
+  .typechips button:hover { border-color: var(--ink); color: var(--ink); }
+  .typechips button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .genrechips { border-top: 1px dotted var(--rule); padding-top: 9px; }
+  .genrechips button[aria-pressed="true"] { background: var(--hi); border-color: var(--ink); color: var(--on-hi); }
+  .genrechips .cov {
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--mid);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    align-self: center; margin-left: auto; font-variant-numeric: tabular-nums;
+  }
+  /* the `hidden` attribute loses to display:flex — keep this rule */
   .typechips[hidden] { display: none; }
   #libbar input {
-    font: inherit; font-size: 12.5px; color: var(--ink); background: var(--panel);
-    border: 1px dashed var(--hairline); border-radius: 99px; padding: 3px 11px; width: 190px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--ink);
+    background: var(--chalk); border: 1px dashed var(--rule); border-radius: 0;
+    padding: 4px 10px; width: 195px; text-transform: uppercase; letter-spacing: 0.04em;
   }
-  .genrechips button { font-size: 12px; padding: 2px 9px; }
-  .genrechips .cov { color: var(--muted); font-size: 12px; align-self: center; margin-left: auto; font-variant-numeric: tabular-nums; }
+  #libbar input::placeholder { color: var(--mid); text-transform: none; letter-spacing: 0; }
+  .libchip[aria-pressed="true"] { background: var(--hi) !important; border-color: var(--ink) !important; color: var(--on-hi) !important; }
+
+  /* ── Ledger rows ─────────────────────────────────────────────── */
+  main { max-width: 1040px; margin: 0 auto; padding: 0 24px 96px; }
+  #list { border: 1px solid var(--rule); border-top: none; }
+  .rowline {
+    display: grid; grid-template-columns: 1fr auto; gap: 1px 18px;
+    padding: 11px 15px; border-bottom: 1px solid var(--rule);
+    cursor: pointer; background: var(--chalk);
+  }
+  .rowline:last-child { border-bottom: none; }
+  /* The signature move: hovering a ledger row highlighter-washes it. */
+  .rowline:hover, .rowline[aria-expanded="true"] {
+    background: var(--hi); border-bottom-color: rgba(14, 14, 14, 0.28);
+  }
+  .rowline:hover *, .rowline[aria-expanded="true"] * { color: var(--on-hi) !important; }
+  .rowline:hover .gbtn, .rowline[aria-expanded="true"] .gbtn { border-color: var(--on-hi); }
+  .rowline .t {
+    font-family: var(--font-display); font-size: 16.5px; font-weight: 500;
+    line-height: 1.3; letter-spacing: -0.01em;
+  }
+  .rowline .a { grid-column: 1; color: var(--mid); font-size: 13px; }
+  .rowline .a .ref { font-family: var(--font-mono); font-size: 11.5px; }
+  /* Span both rows so the metadata stack never stretches the title row apart. */
+  .rowline .y {
+    grid-column: 2; grid-row: 1 / span 2; text-align: right; align-self: start;
+    font-family: var(--font-mono); font-size: 13px; color: var(--mid);
+    font-variant-numeric: tabular-nums;   /* a column — tabular is correct here */
+  }
   .rowline .y .k {
-    display: block; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
-    color: var(--muted); text-align: right;
+    display: block; font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--mid); margin-top: 2px;
   }
   .gbtn {
-    display: block; margin-left: auto; margin-top: 3px;
-    font: inherit; font-size: 11px; color: var(--muted);
-    background: none; border: 1px solid var(--hairline); border-radius: 6px;
-    padding: 1px 7px; cursor: pointer;
+    display: block; margin-left: auto; margin-top: 5px; cursor: pointer;
+    font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--mid);
+    background: none; border: 1px solid var(--rule); border-radius: 0; padding: 2px 7px;
   }
-  .gbtn:hover { color: var(--accent); border-color: var(--accent); }
-  .gbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .toolbar a.export { color: var(--accent); font-size: 13px; text-decoration: none; }
-  .toolbar a.export:hover { text-decoration: underline; }
-  main { max-width: 980px; margin: 0 auto; padding: 0 24px 80px; }
-  #list { border-left: 1px solid var(--hairline); border-right: 1px solid var(--hairline); }
-  .rowline {
-    display: grid; grid-template-columns: 1fr auto; gap: 2px 16px;
-    padding: 10px 14px; border-bottom: 1px solid var(--hairline);
-    cursor: pointer; background: var(--panel);
-  }
-  .rowline:hover { background: var(--row-hover); }
-  .rowline .t { font-weight: 550; }
-  .rowline .a { color: var(--muted); font-size: 13.5px; grid-column: 1; }
-  .rowline .y { color: var(--muted); font-size: 13.5px; font-variant-numeric: tabular-nums; text-align: right; align-self: start; }
+  .gbtn:hover { border-color: var(--ink); color: var(--ink); }
+
+  /* ── Expanded record ─────────────────────────────────────────── */
   .detail {
-    background: var(--panel); border-bottom: 1px solid var(--hairline);
-    padding: 14px 16px 18px; display: flex; gap: 18px; align-items: flex-start;
+    background: var(--bg-darker); border-bottom: 1px solid var(--rule);
+    padding: 18px 16px 20px; display: flex; gap: 20px; align-items: flex-start;
   }
-  .detail img { width: 74px; border-radius: 4px; border: 1px solid var(--hairline); }
+  .detail img { width: 78px; border: 1px solid var(--rule); }
   .detail .meta { flex: 1; min-width: 0; }
-  .detail .pub { color: var(--muted); font-size: 13.5px; margin-bottom: 8px; }
-  .copies { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .detail .pub { color: var(--mid); font-size: 13px; margin-bottom: 4px; }
+  .detail .genres { margin-bottom: 12px; }
+  .detail .genres span {
+    display: inline-block; margin: 0 5px 4px 0; padding: 2px 8px;
+    border: 1px solid var(--rule); background: var(--chalk);
+    font-family: var(--font-mono); font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-light);
+  }
+  .avail-line { margin: 0 0 8px; font-size: 13px; }
+  .avail-line strong { font-family: var(--font-mono); font-size: 15px; }
+  .copies { width: 100%; border-collapse: collapse; font-size: 13px; background: var(--chalk); }
   .copies th {
-    text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
-    color: var(--muted); font-weight: 600; padding: 4px 10px 4px 0; border-bottom: 1px solid var(--hairline);
+    text-align: left; font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--mid);
+    padding: 7px 10px; border-bottom: 1px solid var(--ink);
   }
-  .copies td { padding: 5px 10px 5px 0; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  .copies td { padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  .copies tr:last-child td { border-bottom: none; }
+  .copies .call { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-light); }
+  /* Status: never colour alone — every chip carries its own label. */
   .chip {
-    display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 550;
-    white-space: nowrap;
+    display: inline-block; padding: 2px 8px; border-radius: 0; white-space: nowrap;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.06em;
   }
-  .chip.ok { color: var(--ok); background: var(--ok-bg); }
-  .chip.due { color: var(--due); background: var(--due-bg); }
-  .chip.other { color: var(--other); background: var(--other-bg); }
-  .detail .links { margin-top: 10px; font-size: 13px; }
-  .detail .links a { color: var(--accent); }
-  .loading, .empty { color: var(--muted); padding: 24px 14px; }
+  .chip.ok    { background: var(--hi); color: var(--on-hi); }
+  .chip.due   { background: var(--bg-darker); color: var(--ink-light); border: 1px solid var(--rule); }
+  .chip.other { background: transparent; color: var(--mid); border: 1px solid var(--rule); }
+  .detail .links { margin-top: 12px; }
+  .detail .links a {
+    font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--ink); text-decoration: none;
+    border-bottom: 1px solid var(--ink); padding-bottom: 1px;
+  }
+  .detail .links a:hover { background: var(--hi); color: var(--on-hi); }
+  .loading, .empty { color: var(--mid); padding: 26px 15px; font-size: 13.5px; }
+
   #sentinel { height: 1px; }
-  /* Changes tab */
-  .diffcard { background: var(--panel); border: 1px solid var(--hairline); border-radius: 10px; margin: 18px 0; overflow: hidden; }
-  .diffcard header { padding: 12px 16px; margin: 0; max-width: none; display: flex; gap: 14px; align-items: baseline; border-bottom: 1px solid var(--hairline); }
-  .diffcard header h3 { margin: 0; font-size: 15px; }
-  .diffcard header .nums { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
-  .diffcard .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; padding: 12px 16px 16px; }
-  @media (max-width: 640px) { .diffcard .cols { grid-template-columns: 1fr; } }
-  .diffcard h4 { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin: 8px 0 6px; }
-  .diffcard ul { margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
-  .diffcard li { padding: 3px 0; border-bottom: 1px dotted var(--hairline); }
-  .diffcard li .who { color: var(--muted); }
-  .plus { color: var(--ok); font-weight: 600; }
-  .minus { color: var(--accent); font-weight: 600; }
+
+  /* ── Weekly changes: fixed-size summary cards ────────────────── */
+  /* Cards never grow with the size of the week — they show a per-section
+     tally only. The titles themselves live in the changes window. */
+  .diffcard { background: var(--chalk); border: 1px solid var(--rule); border-radius: 0; margin: 24px 0; }
+  .diffcard .head {
+    padding: 14px 18px; display: flex; gap: 14px; align-items: baseline;
+    flex-wrap: wrap; border-bottom: 1px solid var(--ink);
+  }
+  .diffcard .head h3 {
+    margin: 0; font-family: var(--font-display); font-size: 21px; font-weight: 600; letter-spacing: -0.02em;
+  }
+  .diffcard .head .nums {
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--mid);
+    font-variant-numeric: tabular-nums; margin-left: auto;
+  }
+  .plus, .minus, .tilde { font-family: var(--font-mono); font-weight: 500; color: var(--ink); }
+  .plus { background: var(--hi); color: var(--on-hi); padding: 0 4px; }
+
+  .dbreak { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .dbreak th {
+    text-align: left; font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--mid);
+    padding: 9px 18px; border-bottom: 1px solid var(--rule);
+  }
+  .dbreak th.n, .dbreak td.n {
+    text-align: right; font-variant-numeric: tabular-nums; width: 88px;
+  }
+  .dbreak td { padding: 8px 18px; border-bottom: 1px solid var(--rule); }
+  .dbreak tr:last-child td { border-bottom: none; }
+  .dbreak td.n { font-family: var(--font-mono); font-size: 12.5px; }
+  .dbreak td.z { color: var(--rule); }        /* an empty cell reads as a dash, not a zero */
+  .dbreak .sect { font-weight: 500; }
+  .dbreak tr.total td { border-top: 1px solid var(--ink); font-weight: 600; }
+
+  .dactions { display: flex; gap: 6px; flex-wrap: wrap; padding: 13px 18px; border-top: 1px solid var(--rule); }
+  .dbtn {
+    appearance: none; cursor: pointer; background: var(--chalk); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 0; padding: 6px 12px;
+    font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.04em; font-variant-numeric: tabular-nums; transition: all 0.12s;
+  }
+  .dbtn:hover:not(:disabled) { background: var(--hi); border-color: var(--ink); color: var(--on-hi); }
+  .dbtn:disabled { color: var(--rule); cursor: default; }
+
+  /* ── Changes window ──────────────────────────────────────────── */
+  .dmodal {
+    width: min(860px, calc(100vw - 32px)); max-height: 84vh; padding: 0;
+    border: 1px solid var(--ink); border-radius: 0; background: var(--chalk);
+    color: var(--ink); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .dmodal::backdrop { background: rgba(14, 14, 14, 0.55); }
+  .dmodal[open] { display: flex; }
+  .dmhead { padding: 16px 20px 0; border-bottom: 1px solid var(--ink); flex: none; }
+  .dmtitle { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .dmtitle h3 {
+    margin: 0; font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+  }
+  .dmclose {
+    margin-left: auto; appearance: none; background: none; border: 1px solid var(--rule);
+    border-radius: 0; width: 28px; height: 26px; cursor: pointer; color: var(--ink); line-height: 1;
+  }
+  .dmclose:hover { background: var(--hi); border-color: var(--ink); color: var(--on-hi); }
+  .dmtabs { display: flex; gap: 5px; margin: 14px 0 0; }
+  .dmtabs button {
+    appearance: none; cursor: pointer; background: none; color: var(--mid);
+    border: 1px solid transparent; border-bottom: none; border-radius: 0;
+    padding: 7px 12px; margin-bottom: -1px;
+    font-family: var(--font-mono); font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.04em; font-variant-numeric: tabular-nums;
+  }
+  .dmtabs button:hover { color: var(--ink); }
+  .dmtabs button[aria-selected="true"] {
+    color: var(--ink); background: var(--chalk);
+    border-color: var(--ink); border-bottom: 1px solid var(--chalk);
+  }
+  .dmfilter { flex: none; padding: 12px 20px; border-bottom: 1px solid var(--rule); display: flex; gap: 10px; align-items: center; }
+  .dmfilter input {
+    flex: 1; font-family: var(--font-body); font-size: 13px; color: var(--ink);
+    background: var(--bg); border: 1px solid var(--rule); border-radius: 0; padding: 7px 10px;
+  }
+  .dmfilter .n {
+    font-family: var(--font-mono); font-size: 10.5px; color: var(--mid);
+    text-transform: uppercase; letter-spacing: 0.06em; font-variant-numeric: tabular-nums;
+  }
+  /* the only scroll container — the window itself never grows */
+  .dmbody { overflow-y: auto; flex: 1; padding: 0 20px 16px; }
+  .dmbody ul { margin: 0; padding: 0; list-style: none; font-size: 13.5px; }
+  .dmbody li { padding: 9px 0; border-bottom: 1px dotted var(--rule); }
+  .dmbody li .ttl { font-family: var(--font-display); font-size: 15px; font-weight: 500; }
+  .dmbody li .who { display: block; color: var(--mid); font-size: 12.5px; margin-top: 2px; }
+  .dmsec {
+    position: sticky; top: 0; background: var(--chalk); z-index: 1;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 500; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--mid);
+    padding: 12px 0 6px; border-bottom: 1px solid var(--ink);
+  }
+  .dfield { display: block; font-size: 12.5px; margin-top: 3px; font-family: var(--font-mono); }
+  .dfield .fk { color: var(--mid); text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; }
+  /* pre-wrap: many OPAC edits are whitespace-only, and collapsed spaces
+     would render the two sides as identical strings. */
+  .dfield .old, .dfield .new { white-space: pre-wrap; }
+  .dfield .old { color: var(--mid); text-decoration: line-through; }
+  .dfield .new { background: var(--hi); color: var(--on-hi); padding: 0 3px; }
+
+  @media (max-width: 720px) {
+    .masthead h1 { font-size: 32px; }
+    .news-nav { padding: 12px 16px; }
+    .news-nav-links { gap: 18px; }
+    .wrap, .toolbar, main { padding-left: 16px; padding-right: 16px; }
+  }
   @media (prefers-reduced-motion: no-preference) {
-    .detail { animation: open .18s ease-out; }
+    .detail { animation: open 0.18s ease-out; }
     @keyframes open { from { opacity: 0; transform: translateY(-3px); } }
   }
 </style>
 </head>
 <body>
-<header>
-  <div class="masthead">
-    <h1>Aladí <span class="red">·</span> English Catalogue</h1>
-    <span class="stats" id="stats">loading…</span>
-  </div>
-  <div class="tabs" role="tablist">
+
+<nav class="news-nav">
+  <a class="news-nav-logo" href="/">ALADÍ <em>/ english</em></a>
+  <div class="news-nav-links" role="tablist">
     <button role="tab" aria-selected="true" id="tab-cat">Catalogue</button>
     <button role="tab" aria-selected="false" id="tab-diff">Weekly changes</button>
   </div>
-</header>
+  <div class="news-nav-right">
+    <button class="icon-btn" id="themebtn" title="Toggle light / dark" aria-label="Toggle light or dark theme">◐</button>
+    <a class="cta-btn" id="export" href="#" download="aladi-english-filtered.csv">Export CSV</a>
+  </div>
+</nav>
+
+<div class="wrap masthead" id="masthead">
+  <span class="eyebrow">Biblioteques de la Diputació de Barcelona</span>
+  <h1>The English-language shelf, made searchable.</h1>
+  <p class="lede">Every English item across the Aladí network — books, CDs, vinyl, DVDs,
+    scores, board games and more — with the filters the OPAC never gave you.</p>
+</div>
+
+<div class="wrap" id="bentowrap">
+  <section class="bento" aria-label="Catalogue summary">
+    <div class="bstat">
+      <span class="eyebrow">In catalogue</span>
+      <span class="bnum" id="stat-total">—</span>
+      <span class="bsub" id="stat-total-sub">English-language items</span>
+    </div>
+    <div class="bstat">
+      <span class="eyebrow">Matching filters</span>
+      <span class="bnum" id="stat-shown">—</span>
+      <span class="bsub" id="stat-shown-sub">Refine with the chips below</span>
+    </div>
+    <div class="bstat">
+      <span class="eyebrow">Your libraries</span>
+      <span class="bnum" id="stat-libs">—</span>
+      <span class="bsub" id="stat-libs-sub">Searching all branches</span>
+    </div>
+    <div class="bstat">
+      <span class="eyebrow">Snapshot</span>
+      <span class="bnum small" id="stat-date">—</span>
+      <span class="bsub">Synced every Sunday</span>
+    </div>
+  </section>
+</div>
 
 <div class="toolbar" id="toolbar">
   <div class="typechips" id="typechips" role="group" aria-label="Material type"></div>
@@ -198,7 +438,6 @@
     <option value="old">Oldest first</option>
   </select>
   <span class="count" id="count"></span>
-  <a class="export" id="export" href="#" download="aladi-english-filtered.csv">Export CSV</a>
 </div>
 
 <main>
@@ -207,12 +446,39 @@
   <div id="diffs" hidden></div>
 </main>
 
+<dialog class="dmodal" id="dmodal" aria-labelledby="dm-title">
+  <div class="dmhead">
+    <div class="dmtitle">
+      <span class="eyebrow">Weekly changes</span>
+      <h3 id="dm-title">—</h3>
+      <button class="dmclose" id="dm-close" aria-label="Close">✕</button>
+    </div>
+    <div class="dmtabs" id="dm-tabs" role="tablist">
+      <button role="tab" data-kind="added" aria-selected="true">Added</button>
+      <button role="tab" data-kind="removed" aria-selected="false">Removed</button>
+      <button role="tab" data-kind="changed" aria-selected="false">Edited</button>
+    </div>
+  </div>
+  <div class="dmfilter">
+    <input type="search" id="dm-filter" placeholder="Filter these titles…" aria-label="Filter changes">
+    <span class="n" id="dm-count"></span>
+  </div>
+  <div class="dmbody" id="dm-body"></div>
+</dialog>
+
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   const CHUNK = 150;
+  const MONTHS = ["January", "February", "March", "April", "May", "June",
+                  "July", "August", "September", "October", "November", "December"];
+  // 2026-08-17 → "17 August 2026". Day stays zero-padded so dates line up in mono.
+  function fmtDate(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+    return m ? `${m[3]} ${MONTHS[+m[2] - 1]} ${m[1]}` : (iso || "");
+  }
   const TYPE_PLURAL = { a: "Books", j: "CDs", d: "Vinyl", g: "DVDs", c: "Scores",
                         "1": "Board games", r: "Magazines", e: "Maps", p: "Video games" };
   const TYPE_ONE = { a: "Book", j: "CD", d: "Vinyl", g: "DVD", c: "Score",
@@ -230,6 +496,20 @@
   let nBooks = 0;
   let LIBS = {};         // code -> name
   let myLibs = JSON.parse(localStorage.getItem("myLibs") || "[]");
+
+  // ---- theme ----
+  const savedTheme = localStorage.getItem("theme");
+  if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
+  $("themebtn").addEventListener("click", () => {
+    const isDark = savedTheme
+      ? document.documentElement.getAttribute("data-theme") === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = document.documentElement.getAttribute("data-theme")
+      ? (document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark")
+      : (isDark ? "light" : "dark");
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("theme", next);
+  });
 
   // With libraries selected, the whole app narrows to what they hold —
   // every chip count is computed inside this universe.
@@ -254,13 +534,17 @@
       chip.className = "libchip";
       chip.setAttribute("aria-pressed", "true");
       chip.title = "Remove this library";
-      chip.textContent = `📍 ${LIBS[code] || code} ✕`;
+      chip.textContent = `${LIBS[code] || code} ✕`;
       chip.onclick = () => {
         myLibs = myLibs.filter(c => c !== code);
         libsChanged();
       };
       bar.insertBefore(chip, input);
     }
+    $("stat-libs").textContent = myLibs.length || "All";
+    $("stat-libs-sub").textContent = myLibs.length
+      ? myLibs.map(c => LIBS[c] || c).join(", ")
+      : "Searching all branches";
   }
   function persistLibs() {
     localStorage.setItem("myLibs", JSON.stringify(myLibs));
@@ -284,7 +568,8 @@
     items = d.items; snapDate = d.date;
     nBooks = items.filter(r => (r[6] || "a") === "a").length;
     normed = items.map(r => norm(r[0] + " " + r[1] + " " + r[2]));
-    $("stats").textContent = `${d.count.toLocaleString("en")} items · snapshot ${d.date}`;
+    $("stat-total").textContent = d.count.toLocaleString("en");
+    $("stat-date").textContent = fmtDate(d.date);
     buildChips();
     buildDecades();
     apply();
@@ -303,7 +588,6 @@
   }
 
   function buildDecades() {
-    const now = 2030;
     let opts = '<option value="">Any decade</option>';
     for (let d0 = 2020; d0 >= 1900; d0 -= 10) opts += `<option value="${d0}">${d0}s</option>`;
     opts += '<option value="old">Before 1900</option>';
@@ -342,7 +626,7 @@
         data-kind="${kind}" data-val="${val}">${label}${n ? " " + n.toLocaleString("en") : ""}</button>`;
     el.innerHTML =
       order.map(g => chip(g, g, counts[g], "genre")).join("") +
-      chip("kids", "👶 Kids", audCounts.kids, "aud") + chip("d", "Teen", audCounts.teen, "aud") +
+      chip("kids", "Kids", audCounts.kids, "aud") + chip("d", "Teen", audCounts.teen, "aud") +
       `<span class="cov">${booksCovered >= nBooks ? "all books classified"
         : `classifying… ${Math.round(booksCovered / nBooks * 100)}%`}</span>`;
     el.hidden = order.length === 0;
@@ -418,16 +702,30 @@
     else if (s === "old") view.sort((a, b) => (items[a][3] || "9999").localeCompare(items[b][3] || "9999"));
     // default: snapshot order is already title-sorted
     $("count").textContent = `${view.length.toLocaleString("en")} shown`;
-    $("list").innerHTML = view.length ? "" : '<div class="empty">No books match.</div>';
+    $("stat-shown").textContent = view.length.toLocaleString("en");
+    $("stat-shown-sub").textContent = describeFilters();
+    $("list").innerHTML = view.length ? "" : '<div class="empty">Nothing matches these filters.</div>';
     rendered = 0; openBib = null;
     renderMore();
+  }
+
+  function describeFilters() {
+    const bits = [];
+    if (activeType) bits.push(TYPE_PLURAL[activeType] || activeType);
+    if (activeGenre) bits.push(activeGenre);
+    if (activeAud) bits.push(activeAud === "kids" ? "Kids" : "Teen");
+    const q = $("q").value.trim();
+    if (q) bits.push(`“${q}”`);
+    const y1 = $("y1").value, y2 = $("y2").value;
+    if (y1 || y2) bits.push(`${y1 || "…"}–${y2 || "…"}`);
+    return bits.length ? bits.join(" · ") : "Refine with the chips below";
   }
 
   const GOOGLE_TYPES = new Set(["a", "j", "d"]);   // books + CDs + vinyl
   function rowHTML(r) {
     const bits = [r[1], r[2]].filter(Boolean).join(" — ");
     const ty = r[6] || "a";
-    const ref = r[4] ? ` · ${ty === "a" ? "ISBN" : "EAN"} ${r[4]}` : "";
+    const ref = r[4] ? ` <span class="ref">${ty === "a" ? "ISBN" : "EAN"} ${r[4]}</span>` : "";
     const tag = ty !== "a" ? `<span class="k">${TYPE_ONE[ty] || ty}</span>` : "";
     const g = GOOGLE_TYPES.has(ty)
       ? `<button class="gbtn" data-bib="${r[5]}" title="Search Google for this ${TYPE_ONE[ty]}">Google ↗</button>` : "";
@@ -471,7 +769,8 @@
     const r = items[view.find(i => items[i][5] === bib)] || items.find(x => x[5] === bib);
     const cover = r && r[4] ? `<img src="https://portadesbd.diba.cat/img.php?isbn=${r[4]}&m=g" alt="" onerror="this.remove()">` : "";
     const eg = enrich[bib];
-    const gline = eg && eg[2].length ? `<div class="pub">${eg[2].map(esc).join(" · ")}</div>` : "";
+    const gline = eg && eg[2].length
+      ? `<div class="genres">${eg[2].map(g => `<span>${esc(g)}</span>`).join("")}</div>` : "";
     rowEl.insertAdjacentHTML("afterend", `<div class="detail" data-for="${bib}">${cover}
       <div class="meta">
         <div class="pub">${esc(r ? r[2] : "")}</div>${gline}
@@ -484,9 +783,9 @@
       if (d.error) { slot.innerHTML = `<span class="empty">Availability lookup failed: ${esc(d.error)}</span>`; return; }
       if (!d.copies.length) { slot.innerHTML = '<span class="empty">No copy list on the record page (may be an e-resource or multi-volume set — check the record link below).</span>'; return; }
       const avail = d.copies.filter(c => chipClass(c.status) === "ok").length;
-      slot.innerHTML = `<p style="margin:0 0 6px;font-size:13.5px"><strong>${avail}</strong> of ${d.copies.length} ${d.copies.length === 1 ? "copy" : "copies"} available now</p>
+      slot.innerHTML = `<p class="avail-line"><strong>${avail}</strong> of ${d.copies.length} ${d.copies.length === 1 ? "copy" : "copies"} available now</p>
         <div style="overflow-x:auto"><table class="copies"><tr><th>Library</th><th>Call number</th><th>Status</th></tr>
-        ${d.copies.map(c => `<tr><td>${esc(c.location)}</td><td>${esc(c.call)}</td>
+        ${d.copies.map(c => `<tr><td>${esc(c.location)}</td><td class="call">${esc(c.call)}</td>
           <td><span class="chip ${chipClass(c.status)}">${esc(c.status)}</span></td></tr>`).join("")}
         </table></div>`;
     });
@@ -518,7 +817,7 @@
                  `https://aladi.diba.cat/record=${r[5]}~S171*eng`]);
     }
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    e.target.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
+    e.currentTarget.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
   });
 
   // ---- tabs / weekly changes ----
@@ -526,6 +825,7 @@
     $("tab-cat").setAttribute("aria-selected", cat);
     $("tab-diff").setAttribute("aria-selected", !cat);
     $("toolbar").style.display = cat ? "" : "none";
+    $("bentowrap").hidden = !cat;   // "matching filters" means nothing on the changes tab
     $("list").hidden = !cat; $("sentinel").hidden = !cat;
     $("diffs").hidden = cat;
     if (!cat) loadDiffs();
@@ -534,28 +834,149 @@
   $("tab-diff").onclick = () => selectTab(false);
 
   let diffsLoaded = false;
+  let diffData = [];
   function loadDiffs() {
     if (diffsLoaded) return; diffsLoaded = true;
     fetch("/api/diffs").then(r => r.json()).then(list => {
+      diffData = list;
       if (!list.length) {
         $("diffs").innerHTML = '<div class="empty">No weekly diffs yet — they appear after the second weekly run (run <code>python3 diff.py</code> after a new snapshot).</div>';
         return;
       }
-      $("diffs").innerHTML = list.map(d => {
-        const li = r => `<li>${esc(r[0])} <span class="who">${esc(r[1] || "")}${r[3] ? " · " + r[3] : ""}${(r[6] || "a") !== "a" ? " · " + (TYPE_ONE[r[6]] || r[6]) : ""}</span></li>`;
-        return `<div class="diffcard">
-          <header><h3>${d.from} → ${d.to}</h3>
-          <span class="nums">${d.counts.from.toLocaleString("en")} → ${d.counts.to.toLocaleString("en")} books ·
-          <span class="plus">+${d.counts.added}</span> / <span class="minus">−${d.counts.removed}</span> / ~${d.counts.changed} edited</span></header>
-          <div class="cols">
-            <div><h4>Added (${d.counts.added})</h4><ul>${d.added.slice(0, 400).map(li).join("") || "<li>none</li>"}</ul>
-              ${d.added.length > 400 ? `<p class="empty">…and ${d.added.length - 400} more (see JSON report)</p>` : ""}</div>
-            <div><h4>Removed (${d.counts.removed})</h4><ul>${d.removed.slice(0, 400).map(li).join("") || "<li>none</li>"}</ul>
-              ${d.removed.length > 400 ? `<p class="empty">…and ${d.removed.length - 400} more (see JSON report)</p>` : ""}</div>
-          </div></div>`;
-      }).join("");
+      $("diffs").innerHTML = list.map(diffCardHTML).join("");
     });
   }
+
+  const sectionOf = row => TYPE_PLURAL[row[6] || "a"] || (row[6] || "a");
+  const changedRows = d => d.changed || [];
+
+  // Card body is a per-section tally, so its height depends on the number of
+  // material types (max 9) — never on how big the week was.
+  function diffCardHTML(d, i) {
+    const t = {};
+    const bump = (row, key) => {
+      const s = sectionOf(row);
+      (t[s] = t[s] || { added: 0, removed: 0, changed: 0 })[key]++;
+    };
+    d.added.forEach(r => bump(r, "added"));
+    d.removed.forEach(r => bump(r, "removed"));
+    changedRows(d).forEach(c => bump(c.after || c.before, "changed"));
+    const tot = s => t[s].added + t[s].removed + t[s].changed;
+    const sects = Object.keys(t).sort((a, b) => tot(b) - tot(a) || a.localeCompare(b));
+    const cell = n => n ? `<td class="n">${n.toLocaleString("en")}</td>` : '<td class="n z">—</td>';
+    const nCh = changedRows(d).length;
+    const body = sects.length ? `<table class="dbreak">
+        <tr><th>Section</th><th class="n">Added</th><th class="n">Removed</th><th class="n">Edited</th></tr>
+        ${sects.map(s => `<tr><td class="sect">${esc(s)}</td>${cell(t[s].added)}${cell(t[s].removed)}${cell(t[s].changed)}</tr>`).join("")}
+        <tr class="total"><td class="sect">All sections</td>${cell(d.added.length)}${cell(d.removed.length)}${cell(nCh)}</tr>
+      </table>` : '<p class="empty">Nothing changed this week.</p>';
+    return `<div class="diffcard">
+      <div class="head"><h3>${fmtDate(d.from)} → ${fmtDate(d.to)}</h3>
+        <span class="nums">${d.counts.from.toLocaleString("en")} → ${d.counts.to.toLocaleString("en")} items</span></div>
+      ${body}
+      <div class="dactions">
+        <button class="dbtn" data-d="${i}" data-kind="added"${d.added.length ? "" : " disabled"}>View ${d.added.length} added</button>
+        <button class="dbtn" data-d="${i}" data-kind="removed"${d.removed.length ? "" : " disabled"}>View ${d.removed.length} removed</button>
+        <button class="dbtn" data-d="${i}" data-kind="changed"${nCh ? "" : " disabled"}>View ${nCh} edited</button>
+      </div></div>`;
+  }
+
+  // ---- changes window ----
+  const CHANGED_FIELDS = ["Title", "Author", "Publisher", "Year", "ISBN"];
+  const M_CHUNK = 150;
+  let mDiff = null, mKind = "added", mList = [], mRendered = 0;
+
+  function openChanges(i, kind) {
+    mDiff = diffData[i]; mKind = kind;
+    $("dm-title").textContent = `${fmtDate(mDiff.from)} → ${fmtDate(mDiff.to)}`;
+    $("dm-filter").value = "";
+    syncTabs(); renderModalList();
+    $("dmodal").showModal();
+  }
+
+  function syncTabs() {
+    const counts = { added: mDiff.added.length, removed: mDiff.removed.length, changed: changedRows(mDiff).length };
+    const label = { added: "Added", removed: "Removed", changed: "Edited" };
+    $("dm-tabs").querySelectorAll("button").forEach(b => {
+      const k = b.dataset.kind;
+      b.setAttribute("aria-selected", String(k === mKind));
+      b.textContent = `${label[k]} ${counts[k]}`;
+      b.disabled = !counts[k];
+    });
+  }
+
+  // Flat list of section headers + entries, so chunked rendering stays simple.
+  function modalEntries() {
+    const q = norm($("dm-filter").value.trim());
+    let src = mKind === "changed"
+      ? changedRows(mDiff).map(c => ({ row: c.after || c.before, ch: c }))
+      : mDiff[mKind].map(r => ({ row: r }));
+    if (q) src = src.filter(e => norm((e.row[0] || "") + " " + (e.row[1] || "")).includes(q));
+    const by = {};
+    for (const e of src) (by[sectionOf(e.row)] = by[sectionOf(e.row)] || []).push(e);
+    const secs = Object.keys(by).sort((a, b) => by[b].length - by[a].length || a.localeCompare(b));
+    const out = [];
+    for (const s of secs) { out.push({ sec: s, n: by[s].length }); out.push(...by[s]); }
+    return out;
+  }
+
+  function entryHTML(e) {
+    if (e.sec) return `<li class="dmsec">${esc(e.sec)} · ${e.n.toLocaleString("en")}</li>`;
+    const r = e.row;
+    const who = [r[1], r[3]].filter(Boolean).join(" · ");
+    let fields = "";
+    if (e.ch) {
+      const flat = s => s.replace(/\s+/g, " ").trim();
+      for (let i = 0; i < CHANGED_FIELDS.length; i++) {
+        const a = e.ch.before[i] || "", b = e.ch.after[i] || "";
+        if (a === b) continue;
+        // Say so explicitly when the only change is spacing — otherwise the two
+        // sides look identical and the diff reads as a bug.
+        const tag = flat(a) === flat(b) ? " · spacing" : "";
+        fields += `<span class="dfield"><span class="fk">${CHANGED_FIELDS[i]}${tag}</span> ` +
+          `<span class="old">${esc(a) || "—"}</span> → <span class="new">${esc(b) || "—"}</span></span>`;
+      }
+    }
+    return `<li><span class="ttl">${esc(r[0])}</span><span class="who">${esc(who)}</span>${fields}</li>`;
+  }
+
+  function renderModalList() {
+    mList = modalEntries();
+    mRendered = 0;
+    const n = mList.filter(e => !e.sec).length;
+    $("dm-count").textContent = `${n.toLocaleString("en")} shown`;
+    $("dm-body").innerHTML = '<ul id="dm-ul"></ul>';
+    $("dm-body").scrollTop = 0;
+    if (!n) { $("dm-body").innerHTML = '<p class="empty">Nothing matches that filter.</p>'; return; }
+    renderModalMore();
+  }
+  function renderModalMore() {
+    if (mRendered >= mList.length) return;
+    const ul = $("dm-ul");
+    if (!ul) return;
+    ul.insertAdjacentHTML("beforeend", mList.slice(mRendered, mRendered + M_CHUNK).map(entryHTML).join(""));
+    mRendered += M_CHUNK;
+  }
+
+  $("diffs").addEventListener("click", e => {
+    const b = e.target.closest(".dbtn");
+    if (b && !b.disabled) openChanges(+b.dataset.d, b.dataset.kind);
+  });
+  $("dm-tabs").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b || b.disabled) return;
+    mKind = b.dataset.kind; syncTabs(); renderModalList();
+  });
+  $("dm-close").addEventListener("click", () => $("dmodal").close());
+  $("dmodal").addEventListener("click", e => { if (e.target === $("dmodal")) $("dmodal").close(); });
+  $("dm-body").addEventListener("scroll", () => {
+    const el = $("dm-body");
+    if (el.scrollTop + el.clientHeight > el.scrollHeight - 600) renderModalMore();
+  });
+  let mDeb;
+  $("dm-filter").addEventListener("input", () => {
+    clearTimeout(mDeb); mDeb = setTimeout(renderModalList, 160);
+  });
 })();
 </script>
 </body>
