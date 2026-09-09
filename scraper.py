@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Weekly catalogue sync: all English-language books in the Aladi OPAC
+"""Weekly catalogue sync: every item in one language in the Aladi OPAC
 (aladi.diba.cat — Barcelona province municipal libraries network).
 
 The OPAC (classic Innovative Millennium) has no "list everything" endpoint and
@@ -7,9 +7,14 @@ caps keyword results at 32,000, so coverage comes from one broad boolean query
 (~28.6k records) plus residual "term AND NOT (main)" sweeps. Records are
 deduplicated by bib id and written as a dated snapshot.
 
+The item language comes from the OPAC's `l=` parameter; see langs.py for the
+per-language broad query and residual sweeps. State is per language, under
+data/<lang>/.
+
 Usage:
-    python3 scraper.py            # full run -> data/snapshots/YYYY-MM-DD.json + .csv
-    python3 scraper.py --resume   # keep page cache from an interrupted run
+    python3 scraper.py                 # English -> data/eng/snapshots/<date>.json + .csv
+    python3 scraper.py --lang=ita      # Italian -> data/ita/snapshots/...
+    python3 scraper.py --resume        # keep page cache from an interrupted run
 
 Politeness: 4 workers by default (~6-8 req/s), honest UA, retries with backoff.
 A full run is ~2,500 requests. Note aladi.diba.cat's robots.txt disallows
@@ -28,24 +33,19 @@ import time
 import urllib.parse
 import urllib.request
 
+import langs
+
 BASE = "https://aladi.diba.cat"
+# Interface-language scope in the URL path — constant. The *item* language is
+# the `l=` query parameter, which is what varies per catalogue.
 SCOPE = "S171*eng"
-MAIN_Q = "and+or+the+or+a+or+in+or+de+or+of"
 # OPAC material-type codes, in scrape order (biggest first)
 MATERIALS = {
     "a": "Book", "j": "CD", "d": "Vinyl", "g": "DVD", "c": "Printed music",
     "1": "Board game", "r": "Magazine", "e": "Map", "p": "Video game",
 }
-RESIDUAL_TERMS = [
-    "s", "i", "la", "el", "en", "es", "on", "for", "is", "by", "my", "un",
-    "le", "y", "o", "no", "new", "love", "art", "con", "per", "del", "que",
-    "com", "els", "al", "der", "die", "das", "1", "2", "3", "you", "we",
-    "how", "what", "who", "story", "book", "life", "world", "little",
-]
 WORKERS = int(os.environ.get("ALADI_WORKERS", "4"))
 ROOT = os.path.dirname(os.path.abspath(__file__))
-SNAP_DIR = os.path.join(ROOT, "data", "snapshots")
-PAGES_JSONL = os.path.join(ROOT, "data", "pages_cache.jsonl")
 LOCK = threading.Lock()
 UA = {"User-Agent": "Mozilla/5.0 (compatible; personal-catalogue-sync; non-commercial)"}
 
@@ -63,9 +63,9 @@ def get(url, tries=4):
             time.sleep(2.0 * (attempt + 1))
 
 
-def search_page1(query, mat):
+def search_page1(query, mat, lang):
     """Run a fresh keyword search; return (total, browse_url_template)."""
-    url = f"{BASE}/search~{SCOPE}/X?SEARCH={query}&l=eng&m={mat}&SORT=AX"
+    url = f"{BASE}/search~{SCOPE}/X?SEARCH={query}&l={lang}&m={mat}&SORT=AX"
     body = get(url)
     if body is None:
         return None, None
@@ -137,10 +137,10 @@ def parse_rows(body):
     return rows
 
 
-def load_done():
+def load_done(pages_jsonl):
     done = set()
-    if os.path.exists(PAGES_JSONL):
-        with open(PAGES_JSONL) as f:
+    if os.path.exists(pages_jsonl):
+        with open(pages_jsonl) as f:
             for line in f:
                 try:
                     done.add(json.loads(line)["key"])
@@ -161,8 +161,8 @@ def fetch_and_store(key, url, mat, fh):
         fh.flush()
 
 
-def scrape_query(tag, query, mat, done, fh):
-    total, template = search_page1(query, mat)
+def scrape_query(tag, query, mat, lang, done, fh):
+    total, template = search_page1(query, mat, lang)
     if not total or not template:
         print(f"[{tag}] total={total} (skip)", flush=True)
         return
@@ -178,22 +178,32 @@ def scrape_query(tag, query, mat, done, fh):
 
 
 def main():
+    lang = langs.resolve()
     resume = "--resume" in sys.argv
     mats = list(MATERIALS)
     for arg in sys.argv[1:]:
         if arg.startswith("--materials="):
             mats = [m for m in arg.split("=", 1)[1].split(",") if m in MATERIALS]
-    if not resume and os.path.exists(PAGES_JSONL):
-        os.remove(PAGES_JSONL)
-    done = load_done()
-    with open(PAGES_JSONL, "a") as fh:
+
+    ddir = langs.data_dir(ROOT, lang)
+    snap_dir = os.path.join(ddir, "snapshots")
+    pages_jsonl = os.path.join(ddir, "pages_cache.jsonl")
+    os.makedirs(snap_dir, exist_ok=True)
+    code, main_q = lang["code"], lang["main_q"]
+    print(f"=== {lang['label']} ({code}) — materials: {','.join(mats)} ===", flush=True)
+
+    if not resume and os.path.exists(pages_jsonl):
+        os.remove(pages_jsonl)
+    done = load_done(pages_jsonl)
+    with open(pages_jsonl, "a") as fh:
         for mat in mats:
-            scrape_query(f"{mat}:main", MAIN_Q, mat, done, fh)
-            for t in RESIDUAL_TERMS:
-                scrape_query(f"{mat}:res-{t}", f"{t}+and+not+%28{MAIN_Q}%29", mat, done, fh)
+            scrape_query(f"{mat}:main", main_q, mat, code, done, fh)
+            for t in lang["residual_terms"]:
+                scrape_query(f"{mat}:res-{t}", f"{t}+and+not+%28{main_q}%29",
+                             mat, code, done, fh)
 
     seen = {}
-    with open(PAGES_JSONL) as f:
+    with open(pages_jsonl) as f:
         for line in f:
             try:
                 rec = json.loads(line)
@@ -206,8 +216,7 @@ def main():
             for r in items]
 
     today = datetime.date.today().isoformat()
-    os.makedirs(SNAP_DIR, exist_ok=True)
-    snap_path = os.path.join(SNAP_DIR, f"{today}.json")
+    snap_path = os.path.join(snap_dir, f"{today}.json")
     # Partial-materials run on a day that already has a snapshot: keep the
     # existing records for bibs this run didn't cover (e.g. add CDs to books).
     if os.path.exists(snap_path):
@@ -218,16 +227,16 @@ def main():
                     rows.append(old + ["a"] * (7 - len(old)))
         rows.sort(key=lambda r: (r[0].casefold(), r[5]))
     with open(snap_path, "w") as f:
-        json.dump({"date": today, "count": len(rows), "items": rows},
+        json.dump({"date": today, "lang": code, "count": len(rows), "items": rows},
                   f, ensure_ascii=False, separators=(",", ":"))
-    with open(os.path.join(SNAP_DIR, f"{today}.csv"), "w", newline="") as f:
+    with open(os.path.join(snap_dir, f"{today}.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["title", "author", "publisher", "year", "isbn_or_ean", "record_id", "type", "permalink"])
         for r in rows:
             w.writerow([r[0], r[1], r[2], r[3], r[4], r[5], MATERIALS.get(r[6], r[6]),
                         f"{BASE}/record={r[5]}~{SCOPE}"])
-    os.remove(PAGES_JSONL)
-    print(f"DONE: {len(rows)} unique records -> {snap_path}", flush=True)
+    os.remove(pages_jsonl)
+    print(f"DONE [{code}]: {len(rows)} unique records -> {snap_path}", flush=True)
 
 
 if __name__ == "__main__":

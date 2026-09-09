@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Local web app for the Aladi English-books catalogue.
+"""Local web app for the Aladi catalogue (one catalogue per item language).
 
-Serves the static UI plus a small JSON API:
-    GET /api/catalogue            latest snapshot (title/author/pub/year/isbn/bib)
-    GET /api/snapshots            list of snapshot dates + counts
-    GET /api/diffs                list of diff reports (newest first)
+Serves the static UI plus a small JSON API. Every catalogue endpoint takes an
+optional `lang=` (eng | ita, default eng) selecting which per-language dataset
+under data/<lang>/ to read:
+    GET /api/catalogue?lang=eng   latest snapshot (title/author/pub/year/isbn/bib)
+    GET /api/enrichment?lang=eng  {bib: [form, aud, genres, libs]}
+    GET /api/snapshots?lang=eng   list of snapshot dates + counts
+    GET /api/diffs?lang=eng       list of diff reports (newest first)
+    GET /api/languages            catalogues available, with record counts
+    GET /api/libraries            branch code -> name (shared across languages)
     GET /api/availability?bib=bX  live per-copy status fetched from aladi.diba.cat
                                   (on-demand only — nothing is bulk-polled)
 
@@ -27,11 +32,11 @@ import urllib.parse
 import urllib.request
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
+import langs
+
 PORT = 8377
 ROOT = os.path.dirname(os.path.abspath(__file__))
 BIND = os.environ.get("ALADI_BIND", "127.0.0.1")
-SNAP_DIR = os.path.join(ROOT, "data", "snapshots")
-DIFF_DIR = os.path.join(ROOT, "data", "diffs")
 BASE = "https://aladi.diba.cat"
 SCOPE = "S171*eng"
 UA = {"User-Agent": "Mozilla/5.0 (compatible; personal-catalogue-app)"}
@@ -39,8 +44,9 @@ UA = {"User-Agent": "Mozilla/5.0 (compatible; personal-catalogue-app)"}
 _avail_cache = {}  # bib -> (timestamp, payload)
 _avail_lock = threading.Lock()
 AVAIL_TTL = 300  # 5 min
-ENRICH_JSONL = os.path.join(ROOT, "data", "enrichment.jsonl")
-_enrich_cache = {"mtime": 0, "body": None}
+# One cache entry per language: lang -> {"mtime", "body"}
+_enrich_cache = {}
+_enrich_lock = threading.Lock()
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────
@@ -217,33 +223,72 @@ def safe_next(nxt):
     return nxt if nxt.startswith("/") and not nxt.startswith("//") else "/"
 
 
-def enrichment_payload():
-    """Compact {bib: [form, aud, [genres]]} from the enrichment file (mtime-cached)."""
+def lang_of(parsed):
+    """The `lang=` query param, validated against the registry; default eng."""
+    q = urllib.parse.parse_qs(parsed.query)
+    code = (q.get("lang", [langs.DEFAULT_LANG])[0] or langs.DEFAULT_LANG).strip().lower()
+    return code if code in langs.LANGS else None
+
+
+def snap_dir(code):
+    return os.path.join(ROOT, "data", code, "snapshots")
+
+
+def diff_dir(code):
+    return os.path.join(ROOT, "data", code, "diffs")
+
+
+def enrichment_payload(code):
+    """Compact {bib: [form, aud, genres, libs]} for one language (mtime-cached)."""
+    path = os.path.join(ROOT, "data", code, "enrichment.jsonl")
     try:
-        mtime = os.path.getmtime(ENRICH_JSONL)
+        mtime = os.path.getmtime(path)
     except OSError:
         return b"{}"
-    if _enrich_cache["body"] is None or mtime != _enrich_cache["mtime"]:
-        out = {}
-        with open(ENRICH_JSONL) as f:
-            for line in f:
-                try:
-                    r = json.loads(line)
-                except Exception:
-                    continue
-                if not r.get("miss"):
-                    out[r["bib"]] = [r.get("form", ""), r.get("aud", ""), r.get("genres", []),
-                                     r.get("libs", [])]
-        _enrich_cache["body"] = json.dumps(out, ensure_ascii=False).encode()
-        _enrich_cache["mtime"] = mtime
-    return _enrich_cache["body"]
+    with _enrich_lock:
+        hit = _enrich_cache.get(code)
+        if hit and hit["mtime"] == mtime:
+            return hit["body"]
+    out = {}
+    with open(path) as f:
+        for line in f:
+            try:
+                r = json.loads(line)
+            except Exception:
+                continue
+            if not r.get("miss"):
+                out[r["bib"]] = [r.get("form", ""), r.get("aud", ""), r.get("genres", []),
+                                 r.get("libs", [])]
+    body = json.dumps(out, ensure_ascii=False).encode()
+    with _enrich_lock:
+        _enrich_cache[code] = {"mtime": mtime, "body": body}
+    return body
 
 
-def latest_snapshot_path():
-    if not os.path.isdir(SNAP_DIR):
+def latest_snapshot_path(code):
+    d = snap_dir(code)
+    if not os.path.isdir(d):
         return None
-    snaps = sorted(f for f in os.listdir(SNAP_DIR) if f.endswith(".json"))
-    return os.path.join(SNAP_DIR, snaps[-1]) if snaps else None
+    snaps = sorted(f for f in os.listdir(d) if f.endswith(".json"))
+    return os.path.join(d, snaps[-1]) if snaps else None
+
+
+def languages_payload():
+    """Which catalogues exist, with the latest record count for each."""
+    out = []
+    for code, cfg in langs.LANGS.items():
+        p = latest_snapshot_path(code)
+        count, date = 0, None
+        if p:
+            try:
+                with open(p) as f:
+                    d = json.load(f)
+                count, date = d.get("count", 0), d.get("date")
+            except Exception:
+                pass
+        out.append({"code": code, "label": cfg["label"], "native": cfg["native"],
+                    "count": count, "date": date, "ready": bool(p)})
+    return out
 
 
 def fetch_availability(bib):
@@ -362,10 +407,18 @@ class Handler(SimpleHTTPRequestHandler):
                                  f"{SESSION_COOKIE}=; Max-Age=0{self.cookie_attrs()}")
         if not self.require_auth(parsed):
             return
+        # Catalogue endpoints are per item-language; reject unknown codes rather
+        # than silently serving English.
+        if parsed.path in ("/api/catalogue", "/api/enrichment", "/api/snapshots", "/api/diffs"):
+            code = lang_of(parsed)
+            if code is None:
+                return self.send_json(
+                    {"error": f"unknown lang; known: {', '.join(langs.LANGS)}"}, 400)
         if parsed.path == "/api/catalogue":
-            p = latest_snapshot_path()
+            p = latest_snapshot_path(code)
             if not p:
-                return self.send_json({"error": "no snapshot yet — run scraper.py"}, 404)
+                return self.send_json(
+                    {"error": f"no {code} snapshot yet — run scraper.py --lang={code}"}, 404)
             with open(p, "rb") as f:
                 data = f.read()
             self.send_response(200)
@@ -373,6 +426,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
+        elif parsed.path == "/api/languages":
+            self.send_json(languages_payload())
         elif parsed.path == "/api/libraries":
             with open(os.path.join(ROOT, "data", "libraries.json"), "rb") as f:
                 data = f.read()
@@ -382,27 +437,27 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
         elif parsed.path == "/api/enrichment":
-            data = enrichment_payload()
+            data = enrichment_payload(code)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
         elif parsed.path == "/api/snapshots":
-            snaps = []
-            if os.path.isdir(SNAP_DIR):
-                for f in sorted(os.listdir(SNAP_DIR)):
+            snaps, d0 = [], snap_dir(code)
+            if os.path.isdir(d0):
+                for f in sorted(os.listdir(d0)):
                     if f.endswith(".json"):
-                        with open(os.path.join(SNAP_DIR, f)) as fh:
+                        with open(os.path.join(d0, f)) as fh:
                             d = json.load(fh)
                         snaps.append({"date": d["date"], "count": d["count"]})
             self.send_json(snaps)
         elif parsed.path == "/api/diffs":
-            diffs = []
-            if os.path.isdir(DIFF_DIR):
-                for f in sorted(os.listdir(DIFF_DIR), reverse=True):
+            diffs, d0 = [], diff_dir(code)
+            if os.path.isdir(d0):
+                for f in sorted(os.listdir(d0), reverse=True):
                     if f.endswith(".json"):
-                        with open(os.path.join(DIFF_DIR, f)) as fh:
+                        with open(os.path.join(d0, f)) as fh:
                             diffs.append(json.load(fh))
             self.send_json(diffs)
         elif parsed.path == "/api/availability":

@@ -1,14 +1,20 @@
-# Aladí English Catalogue
+# Aladí Catalogue
 
-A local, browsable catalogue of **every English-language item** in the Aladi OPAC
-(aladi.diba.cat — the Barcelona province municipal libraries network) — books,
-music CDs, vinyl, DVDs, printed scores, board games, magazines, maps, video
-games — with weekly snapshots, week-over-week diffs, and **on-demand live
+A local, browsable catalogue of **every item in a given language** in the Aladi
+OPAC (aladi.diba.cat — the Barcelona province municipal libraries network) —
+books, music CDs, vinyl, DVDs, printed scores, board games, magazines, maps,
+video games — with weekly snapshots, week-over-week diffs, and **on-demand live
 availability** (which copies are on the shelf vs checked out, per library).
-First full snapshot (2026-08-08): ~61k items, of which 32,447 books.
 
-Built because the OPAC has no "browse everything in English" view — its language
-filter only applies on top of a keyword search.
+Two catalogues today, switchable from the wordmark in the app's header:
+
+| Language | Code | Scale |
+|---|---|---|
+| English | `eng` | ~64.5k items |
+| Italian | `ita` | ~6.8k items |
+
+Built because the OPAC has no "browse everything in one language" view — its
+language filter only applies on top of a keyword search.
 
 ## Use it
 
@@ -28,20 +34,49 @@ python3 server.py        # then open http://localhost:8377
 
 | Piece | Job |
 |---|---|
-| `scraper.py` | Full sync → `data/snapshots/YYYY-MM-DD.json` + `.csv`. ~2,500 requests, ~45 min at the default 4 workers. Resumable (`--resume`). |
-| `diff.py` | Compares the two newest snapshots → `data/diffs/<from>__<to>.json`. |
-| `server.py` | Serves the app + `/api/catalogue`, `/api/diffs`, `/api/availability?bib=…`. |
-| `run_weekly.sh` | scraper + diff, logged to `logs/`. |
+| `langs.py` | The language registry — which catalogues exist, and each one's broad query + residual sweeps. Add a language here. |
+| `scraper.py` | Full sync → `data/<lang>/snapshots/YYYY-MM-DD.json` + `.csv`. English is ~2,500 requests, ~45 min at the default 4 workers; Italian is roughly a tenth of that. Resumable (`--resume`). |
+| `diff.py` | Compares the two newest snapshots → `data/<lang>/diffs/<from>__<to>.json`. |
+| `enrich.py` | Per-record MARC data over Z39.50 → `data/<lang>/enrichment.jsonl`. |
+| `server.py` | Serves the app + `/api/catalogue`, `/api/enrichment`, `/api/snapshots`, `/api/diffs` (all taking `?lang=`), plus `/api/languages`, `/api/libraries` and `/api/availability?bib=…`. |
+| `run_weekly.sh` | scraper + diff + enrich, once per language, logged to `logs/`. |
+
+Every script defaults to English and takes `--lang=<code>`:
+
+```bash
+python3 scraper.py --lang=ita     # Italian full sync
+python3 diff.py --lang=ita
+python3 enrich.py --lang=ita
+ALADI_LANGS=ita ./run_weekly.sh   # weekly pass for one language only
+```
+
+State is per language under `data/<lang>/` (`snapshots/`, `diffs/`,
+`enrichment.jsonl`), so the catalogues never mix. `data/libraries.json` is
+shared — branch codes are language-independent, and so is the app's "my
+libraries" selection.
+
+### Adding another language
+
+The OPAC's own language list is the menu (`ita`, `lat`, `oci`, … as `l=` codes).
+Add an entry to `langs.py` with a `main_q` of that language's commonest
+stopwords plus a `residual_terms` list, then run the three scripts with the new
+`--lang=`. Nothing else needs touching: the server picks the language up from
+`/api/languages` and the app renders a new segment in the header switch.
 
 ### How the scrape covers "everything"
 
 The OPAC (classic Innovative Millennium) requires a keyword and caps results at
-32,000, so: one broad boolean query (`and OR the OR a OR in OR de OR of`,
-language=English, material=Book, ≈28.6k records) plus ~40 residual sweeps
+32,000, so each language gets one broad boolean query of its commonest
+stopwords (English: `and OR the OR a OR in OR de OR of`, ≈28.6k books; Italian:
+`e OR di OR la OR il OR che OR un …`, ≈5.3k books) plus residual sweeps
 (`term AND NOT (main)`) to catch records containing none of the main words.
-Deduped by bib record id. First full run: **32,447 unique books** (2026-08-08).
-Coverage is near-total but not provably complete — a record whose indexed text
-contains none of the ~46 probe words would be missed.
+Deduped by bib record id. Coverage is near-total but not provably complete — a
+record whose indexed text contains none of the probe words would be missed. On
+Italian the residual sweeps return single-digit extras, which is the sign the
+main query already reached nearly everything.
+
+Note the `S171*eng` in every OPAC URL is the site's own **interface** language
+and stays `eng` for all catalogues; the *item* language is the `l=` parameter.
 
 ## Weekly schedule
 
@@ -82,8 +117,9 @@ attempts. Google is told not to index it, and the OPAC's politeness rules still 
 |---|---|
 | Deploy a code change | `deploy/push.sh root@<box>` (rsyncs code, rebuilds, restarts; never touches `data/`, `logs/`, `.env`) |
 | Watch the app | `ssh root@<box> docker logs -f aladi-web-1` |
-| Check the weekly run | on the box: `tail /srv/aladi/logs/cron.log`, `ls /srv/aladi/logs/`, `ls /srv/aladi/data/snapshots/` — cron line via `crontab -l` (Sundays 07:30 Europe/Madrid) |
-| Run the weekly job by hand | on the box: `cd /srv/aladi && docker compose -f deploy/compose.yaml run --rm jobs` (a full scrape — don't do this casually) |
+| Check the weekly run | on the box: `tail /srv/aladi/logs/cron.log`, `ls /srv/aladi/logs/`, `ls /srv/aladi/data/eng/snapshots/` (and `data/ita/…`) — cron line via `crontab -l` (Sundays 07:30 Europe/Madrid) |
+| Run the weekly job by hand | on the box: `cd /srv/aladi && docker compose -f deploy/compose.yaml run --rm jobs` (a full scrape of every language — don't do this casually) |
+| Sync one language only | on the box: `docker compose -f deploy/compose.yaml run --rm -e ALADI_LANGS=ita jobs` |
 | Add or change a login | `python3 server.py --hash-password` → write `name:hash` into `ALADI_USERS` in `/srv/aladi/.env` **with every `$` doubled to `$$`**, then on the box `docker compose -f deploy/compose.yaml up -d` |
 | Sign everyone out | change `ALADI_SECRET` in `/srv/aladi/.env`, then `up -d` |
 | Restart | on the box: `cd /srv/aladi && docker compose -f deploy/compose.yaml restart` |
@@ -92,3 +128,14 @@ Things that will bite: `.env` values are interpolated by compose (hence `$$`); t
 ledger's stack is compose project `deploy`, so never run `down --remove-orphans` on the
 box; the box's `data/` is the source of truth — never rsync `data/` from the Mac again.
 Local dev is unchanged: `python3 server.py` on localhost with no login.
+
+**One-time layout migration (done 2026-09-09).** Data moved from a single
+catalogue to per-language directories. On the box, before deploying the
+multi-language code:
+
+```bash
+cd /srv/aladi/data && mkdir -p eng \
+  && mv snapshots diffs enrichment.jsonl eng/     # libraries.json stays at top level
+```
+
+Skip this on a fresh install — the scripts create what they need.

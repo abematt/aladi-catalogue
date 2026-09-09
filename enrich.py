@@ -8,10 +8,15 @@ derives:
   - audience: MARC 008/22 target audience (kids / teen / adult)
   - genres:   buckets mapped from Catalan subject headings (650/655) + form
 
-Appends to data/enrichment.jsonl (resumable — already-done bibs are skipped),
-so it can run as a background trickle and the app picks up coverage as it grows.
+Genre rules key off the *Catalan* subject headings, so they are the same for
+every item language; only the title fallbacks are language-specific.
 
-Usage:  python3 enrich.py [--limit N] [--batch N] [--workers N]
+Appends to data/<lang>/enrichment.jsonl (resumable — already-done bibs are
+skipped), so it can run as a background trickle and the app picks up coverage
+as it grows.
+
+Usage:  python3 enrich.py [--lang=ita] [--limit N] [--batch N] [--workers N]
+        python3 enrich.py --rederive [--lang=ita]   # recompute genres, no network
 """
 import concurrent.futures as cf
 import json
@@ -23,9 +28,12 @@ import threading
 import time
 import unicodedata
 
+import langs
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
-SNAP_DIR = os.path.join(ROOT, "data", "snapshots")
-ENRICH_JSONL = os.path.join(ROOT, "data", "enrichment.jsonl")
+# Set by main() once the language is known.
+SNAP_DIR = ""
+ENRICH_JSONL = ""
 HOST = "aladi.diba.cat:210/INNOPAC"
 BATCH = 250
 WORKERS = 3
@@ -59,7 +67,7 @@ GENRE_RULES = [
     ("Music", ["musica", "musics", "cantants", "opera", " rock "]),
     ("Science & Nature", ["ciencia", "ciencies", "natura", "animals", "plantes", "univers",
                           "fisica", "biologia", "matemat", "medi ambient", "evolucio"]),
-    ("Language & Learning", ["angles", "llengua", "vocabulari", "diccionari", "gramatica",
+    ("Language & Learning", ["angles", "italia", "llengua", "vocabulari", "diccionari", "gramatica",
                              "ensenyament", "aprenentatge", "lectura"]),
     ("Self-help & Psychology", ["autoajuda", "psicologia", "creixement personal", "felicitat",
                                 "meditacio", "mindfulness"]),
@@ -73,22 +81,29 @@ GENRE_RULES = [
     ("Computers & Tech", ["informatica", "internet", "programacio", "intel·ligencia artificial",
                           "videojocs", "tecnologia"]),
 ]
-# Tech sub-genres: matched against subjects AND the (English) title, so books
-# whose Catalan subjects are thin still classify. Additive to GENRE_RULES.
+# Tech sub-genres: matched against subjects AND the title, so books whose
+# Catalan subjects are thin still classify. Keys cover English, Catalan and
+# Italian title wording. Additive to GENRE_RULES.
 TECH_RULES = [
     ("Tech: Data & AI", ["machine learning", "deep learning", "neural network",
                          "artificial intelligence", "intel·ligencia artificial",
                          "aprenentatge automatic", "data science", "data analy", "big data",
-                         "mineria de dades", "estadistica matematica"]),
+                         "mineria de dades", "estadistica matematica",
+                         "apprendimento automatico", "intelligenza artificiale",
+                         "reti neurali", "scienza dei dati"]),
     ("Tech: Programming", [" python ", "javascript", " java ", " c++ ", " sql ", "programming",
                            "programaci", " coding ", "algorithm", "algorism", "software",
-                           "llenguatges de programacio", "bases de dades", "database"]),
+                           "llenguatges de programacio", "bases de dades", "database",
+                           "programmazione", "linguaggi di programmazione",
+                           "basi di dati", "algoritmi"]),
     ("Tech: Games & Web Dev", ["unreal", "unity", "videojocs", "jocs per ordinador",
-                               "game develop", "web develop", " html ", " css "]),
+                               "game develop", "web develop", " html ", " css ",
+                               "videogioch", "sviluppo web"]),
     ("Tech: IT & Security", [" linux ", " unix ", "hacking", "cybersec", "ciberseguretat",
                              "seguretat informatica", "criptograf", "cryptograph", " devops ",
                              "kubernetes", "internet de les coses", "xarxes d'ordinadors",
-                             "computer network"]),
+                             "computer network", "sicurezza informatica",
+                             "crittografia", "reti di calcolatori"]),
     ("Tech: Creative software", ["photoshop", "lightroom", "indesign", "illustrator",
                                  "premiere", "autocad", "blender", "onshape",
                                  "programa d'ordinador", "disseny assistit"]),
@@ -130,8 +145,9 @@ def derive_genres(form, subjects, title, bio):
     if bio:
         genres.add("Biography")
     # Adult history books often carry thin Catalan subjects ("A Concise History
-    # of Spain" has none) — fall back to the English title for non-fiction.
-    if form == "0" and re.search(r"\bhistor(y|ies|ical)\b", tfolded):
+    # of Spain" has none) — fall back to the title for non-fiction. Covers
+    # English (history/histories/historical) and Italian (storia/storie/storico).
+    if form == "0" and re.search(r"\b(histor(y|ies|ical)|stor(ia|ie|ico|ica))\b", tfolded):
         genres.add("History")
     return sorted(genres)
 
@@ -210,7 +226,18 @@ def rederive():
 
 
 def main():
-    args = dict(a.split("=") for a in sys.argv[1:] if "=" in a)
+    global SNAP_DIR, ENRICH_JSONL
+    lang = langs.resolve()
+    ddir = langs.data_dir(ROOT, lang)
+    SNAP_DIR = os.path.join(ddir, "snapshots")
+    ENRICH_JSONL = os.path.join(ddir, "enrichment.jsonl")
+    if not os.path.isdir(SNAP_DIR) or not [f for f in os.listdir(SNAP_DIR) if f.endswith(".json")]:
+        print(f"[{lang['code']}] no snapshot yet — run scraper.py --lang={lang['code']} first")
+        return
+    os.makedirs(ddir, exist_ok=True)
+    print(f"=== enrich {lang['label']} ({lang['code']}) ===", flush=True)
+
+    args = dict(a.split("=") for a in sys.argv[1:] if "=" in a and not a.startswith("--lang="))
     limit = int(args.get("--limit", 0))
     batch = int(args.get("--batch", BATCH))
     workers = int(args.get("--workers", WORKERS))
@@ -235,7 +262,7 @@ def main():
     todo = [b for b in books if b not in done]
     if limit:
         todo = todo[:limit]
-    print(f"books={len(books)} done={len(done)} todo={len(todo)} "
+    print(f"[{lang['code']}] books={len(books)} done={len(done)} todo={len(todo)} "
           f"(batch={batch}, workers={workers})", flush=True)
     if not todo:
         print("nothing to do")

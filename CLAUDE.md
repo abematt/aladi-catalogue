@@ -2,21 +2,32 @@
 
 Personal project (Abraham + girlfriend, no other users): a local web app over the
 **Aladí** library OPAC (aladi.diba.cat — Barcelona province municipal libraries
-network), holding every **English-language item** (~64k: books, CDs, vinyl, DVDs,
+network), holding every item in a chosen language (books, CDs, vinyl, DVDs,
 scores, board games, magazines, maps, video games) with search/filters the real
 site doesn't have. Standalone repo — the Measure workspace guidance in ancestor
 CLAUDE.md files does not apply here.
+
+**Two catalogues, switchable in the app header:** English (`eng`, ~64.5k items)
+and Italian (`ita`, ~6.8k, added 2026-09-09). `langs.py` is the registry — the
+one place that knows which catalogues exist, with each language's broad query
+and residual sweeps. Every script defaults to English and takes `--lang=<code>`;
+state is per language under `data/<lang>/` (`snapshots/`, `diffs/`,
+`enrichment.jsonl`). `data/libraries.json` is shared, as is the app's "my
+libraries" selection — branch codes are language-independent. Adding a language
+= one entry in `langs.py` + a scrape; the server and UI pick it up from
+`/api/languages`.
 
 ## Components (all pure Python stdlib; the one binary dep is `yaz-client`)
 
 | File | Job |
 |---|---|
-| `scraper.py` | Weekly full sync of the OPAC → `data/snapshots/YYYY-MM-DD.json` + `.csv`. Broad boolean keyword query + ~40 residual `AND NOT` sweeps per material type (the OPAC caps results at 32k and has no list-all). Resumable (`--resume`), `--materials=a,j,...` to scope. |
-| `enrich.py` | Per-record MARC data via **Z39.50** (`yaz-client`, port 210, db INNOPAC — the sanctioned machine interface). Derives `form`/`aud` (008), genre buckets from Catalan subject headings + English titles, and **holding-library codes** (907 `$i`). Incremental; `--rederive` recomputes genres locally from stored subjects without network. |
-| `diff.py` | Diffs two newest snapshots → `data/diffs/`. |
-| `server.py` | App + JSON API on port 8377 (bind via `ALADI_BIND`, default localhost): `/api/catalogue`, `/api/enrichment`, `/api/libraries`, `/api/diffs`, `/api/availability?bib=` (live per-copy status proxied from the record page, 5-min cache). Optional in-app login (`/login`, `/logout`, signed session cookie) when `ALADI_USERS` is set — see Deployment. |
-| `app/index.html` | Single-file UI: type chips, genre/audience chips (books), decade/year, library picker ("my libraries" in localStorage — selecting libraries IS the filter), Google-search buttons, live availability on row click, CSV export, weekly-changes tab. |
-| `run_weekly.sh` | scrape → diff → enrich; scheduled by launchd `com.abraham.aladi-weekly` (Sun 07:30, plist in repo + `~/Library/LaunchAgents`). |
+| `langs.py` | Language registry: per-language `main_q` + `residual_terms`, `resolve()` for `--lang=`/`$ALADI_LANG`, `data_dir()` for `data/<lang>/`. |
+| `scraper.py` | Weekly full sync of the OPAC → `data/<lang>/snapshots/YYYY-MM-DD.json` + `.csv`. Broad boolean keyword query + residual `AND NOT` sweeps per material type (the OPAC caps results at 32k and has no list-all). Resumable (`--resume`), `--materials=a,j,...` to scope, `--lang=` to pick the catalogue. |
+| `enrich.py` | Per-record MARC data via **Z39.50** (`yaz-client`, port 210, db INNOPAC — the sanctioned machine interface). Derives `form`/`aud` (008), genre buckets from Catalan subject headings + titles, and **holding-library codes** (907 `$i`). Genre rules key off *Catalan* subjects so they work for every language; only the tech/history title fallbacks are language-specific (English + Italian stems). Incremental; `--rederive` recomputes genres locally from stored subjects without network. |
+| `diff.py` | Diffs two newest snapshots → `data/<lang>/diffs/`. |
+| `server.py` | App + JSON API on port 8377 (bind via `ALADI_BIND`, default localhost). `/api/catalogue`, `/api/enrichment`, `/api/snapshots`, `/api/diffs` all take `?lang=` (default `eng`, unknown code → 400 rather than a silent fallback); `/api/languages` lists the catalogues with counts; `/api/libraries` and `/api/availability?bib=` (live per-copy status proxied from the record page, 5-min cache) are language-independent. Optional in-app login (`/login`, `/logout`, signed session cookie) when `ALADI_USERS` is set — see Deployment. |
+| `app/index.html` | Single-file UI: language switch in the wordmark (`ALADÍ / english · italiano`, choice in localStorage), type chips, genre/audience chips (books), decade/year, library picker ("my libraries" in localStorage — selecting libraries IS the filter), Google-search buttons, live availability on row click, CSV export, weekly-changes tab. |
+| `run_weekly.sh` | Per language: scrape → diff → enrich. Languages from `$ALADI_LANGS` (default `eng ita`). Runs from root's crontab on the box (Sun 07:30 Europe/Madrid). |
 
 `data/` and `logs/` are gitignored state. `data/libraries.json` maps the 249
 branch codes → names (scraped from the OPAC search form).
@@ -40,6 +51,12 @@ branch codes → names (scraped from the OPAC search form).
   idempotent, rerun fills gaps (timeouts now printed).
 - `$i none` in 907 = record with no copies attached (on-order); filtered out.
 - The `hidden` attribute loses to `display:flex` — `.typechips[hidden]` CSS rule.
+- `S171*eng` in OPAC URLs is the site's **interface** language and stays `eng`
+  for every catalogue; the *item* language is the `l=` query parameter. Record
+  permalinks keep `~S171*eng` regardless of the item's language.
+- Switching language in the UI must invalidate the diff tab's load-once cache
+  and guard in-flight fetches (a `loadSeq` counter) — otherwise a slow response
+  for the language you just left overwrites the new one.
 
 ## Deployment (live since 2026-09-09)
 

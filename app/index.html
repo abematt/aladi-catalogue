@@ -64,6 +64,22 @@
     letter-spacing: -0.02em; color: var(--ink); text-decoration: none;
   }
   .news-nav-logo em { font-style: normal; opacity: 0.4; }
+  /* Language switch: reads as part of the wordmark ("ALADÍ / english · italiano"),
+     the inactive language dimmed like the old static <em>. */
+  .langswitch {
+    grid-column: 1; justify-self: start; display: flex; align-items: baseline; gap: 6px;
+    font-family: var(--font-mono); font-size: 15px; font-weight: 500; letter-spacing: -0.02em;
+  }
+  .langswitch .brand { color: var(--ink); text-decoration: none; }
+  .langswitch .sep { color: var(--ink); opacity: 0.4; }
+  .langswitch button {
+    appearance: none; background: none; border: none; padding: 0; cursor: pointer;
+    font: inherit; letter-spacing: inherit; color: var(--ink); opacity: 0.4;
+    transition: opacity 0.15s;
+  }
+  .langswitch button:hover { opacity: 0.75; }
+  .langswitch button[aria-pressed="true"] { opacity: 1; }
+  .langswitch button[disabled] { cursor: default; opacity: 0.22; }
   .news-nav-links {
     grid-column: 2; display: flex; gap: 26px; list-style: none; margin: 0; padding: 0;
   }
@@ -375,7 +391,9 @@
 <body>
 
 <nav class="news-nav">
-  <a class="news-nav-logo" href="/">ALADÍ <em>/ english</em></a>
+  <div class="langswitch" id="langswitch" role="group" aria-label="Catalogue language">
+    <a class="brand" href="/">ALADÍ</a><span class="sep">/</span>
+  </div>
   <div class="news-nav-links" role="tablist">
     <button role="tab" aria-selected="true" id="tab-cat">Catalogue</button>
     <button role="tab" aria-selected="false" id="tab-diff">Weekly changes</button>
@@ -389,8 +407,8 @@
 
 <div class="wrap masthead" id="masthead">
   <span class="eyebrow">Biblioteques de la Diputació de Barcelona</span>
-  <h1>The English-language shelf, made searchable.</h1>
-  <p class="lede">Every English item across the Aladí network — books, CDs, vinyl, DVDs,
+  <h1 id="hero-title">The English-language shelf, made searchable.</h1>
+  <p class="lede" id="hero-lede">Every English item across the Aladí network — books, CDs, vinyl, DVDs,
     scores, board games and more — with the filters the OPAC never gave you.</p>
 </div>
 
@@ -498,6 +516,72 @@
   let LIBS = {};         // code -> name
   let myLibs = JSON.parse(localStorage.getItem("myLibs") || "[]");
 
+  // ---- catalogue language ----
+  // One catalogue per item language; the choice sticks per browser. "My
+  // libraries" is deliberately shared — the same branches hold both.
+  const LANG_KEY = "lang";
+  let LANG = localStorage.getItem(LANG_KEY) || "eng";
+  let LANGS = [];
+  const api = path => path + (path.includes("?") ? "&" : "?") + "lang=" + LANG;
+
+  function langLabel(code) {
+    const l = LANGS.find(x => x.code === code);
+    return l ? l.native : code;
+  }
+
+  function renderLangSwitch() {
+    const box = $("langswitch");
+    box.querySelectorAll("button, .dot").forEach(el => el.remove());
+    LANGS.forEach((l, i) => {
+      if (i) {
+        const dot = document.createElement("span");
+        dot.className = "sep dot";
+        dot.textContent = "·";
+        box.appendChild(dot);
+      }
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = l.native;
+      b.setAttribute("aria-pressed", String(l.code === LANG));
+      if (!l.ready && l.code !== LANG) {
+        b.disabled = true;
+        b.title = "Not synced yet";
+      } else {
+        b.title = l.count
+          ? `${l.count.toLocaleString("en")} ${l.label} items`
+          : `${l.label} catalogue`;
+      }
+      b.onclick = () => switchLang(l.code);
+      box.appendChild(b);
+    });
+  }
+
+  function switchLang(code) {
+    if (code === LANG) return;
+    LANG = code;
+    localStorage.setItem(LANG_KEY, code);
+    // Genre/audience are per-catalogue: a genre present in both (Crime, say)
+    // would otherwise keep filtering while its chip renders unpressed, because
+    // buildGenreChips only clears a selection the new catalogue lacks. The
+    // library picker and the type filter stay — they mean the same in both.
+    activeGenre = "";
+    activeAud = "";
+    renderLangSwitch();
+    applyLangCopy();
+    reloadCatalogue();
+  }
+
+  // The handful of strings that name the language.
+  function applyLangCopy() {
+    const label = (LANGS.find(x => x.code === LANG) || {}).label || native;
+    document.title = `Aladí · ${label} Catalogue`;
+    $("hero-title").textContent = `The ${label}-language shelf, made searchable.`;
+    $("hero-lede").textContent = `Every ${label} item across the Aladí network — books, `
+      + "CDs, vinyl, DVDs, scores, board games and more — with the filters the OPAC never gave you.";
+    $("stat-total-sub").textContent = `${label}-language items`;
+    $("export").setAttribute("download", `aladi-${LANG}-filtered.csv`);
+  }
+
   // ---- theme ----
   const savedTheme = localStorage.getItem("theme");
   if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
@@ -564,29 +648,61 @@
     if (code) e.target.value = "";
   });
 
-  fetch("/api/catalogue").then(r => r.json()).then(d => {
-    if (d.error) { $("list").innerHTML = `<div class="empty">${esc(d.error)}</div>`; return; }
-    items = d.items; snapDate = d.date;
-    nBooks = items.filter(r => (r[6] || "a") === "a").length;
-    normed = items.map(r => norm(r[0] + " " + r[1] + " " + r[2]));
-    $("stat-total").textContent = d.count.toLocaleString("en");
-    $("stat-date").textContent = fmtDate(d.date);
-    buildChips();
-    buildDecades();
-    apply();
-    loadEnrichment();
-  });
+  let decadesBuilt = false;
+  let loadSeq = 0;        // guards against a slow fetch for a language we left
+  let diffsLoaded = false;
+  let diffData = [];
 
-  function loadEnrichment() {
-    fetch("/api/enrichment").then(r => r.json()).then(e => {
+  function reloadCatalogue() {
+    const seq = ++loadSeq;
+    $("stat-total").textContent = "—";
+    $("list").innerHTML = '<div class="empty">Loading…</div>';
+    items = []; normed = []; enrich = {}; nBooks = 0;
+    fetch(api("/api/catalogue")).then(r => r.json()).then(d => {
+      if (seq !== loadSeq) return;
+      if (d.error) {
+        $("list").innerHTML = `<div class="empty">${esc(d.error)}</div>`;
+        $("stat-shown").textContent = "0";
+        return;
+      }
+      items = d.items; snapDate = d.date;
+      nBooks = items.filter(r => (r[6] || "a") === "a").length;
+      normed = items.map(r => norm(r[0] + " " + r[1] + " " + r[2]));
+      $("stat-total").textContent = d.count.toLocaleString("en");
+      $("stat-date").textContent = fmtDate(d.date);
+      buildChips();
+      if (!decadesBuilt) { buildDecades(); decadesBuilt = true; }
+      apply();
+      loadEnrichment(seq);
+    });
+    // Weekly changes are per language too — drop the cache and refetch if the
+    // tab has already been opened.
+    if (diffsLoaded) { diffsLoaded = false; loadDiffs(); }
+  }
+
+  function loadEnrichment(seq) {
+    fetch(api("/api/enrichment")).then(r => r.json()).then(e => {
+      if (seq !== loadSeq) return;
       enrich = e;
       buildGenreChips();
       if (myLibs.length) buildChips();
       if (activeGenre || activeAud || myLibs.length) apply();
       // enrichment trickles in in the background — poll until everything is covered
-      if (Object.keys(e).length < items.length) setTimeout(loadEnrichment, 90000);
+      if (Object.keys(e).length < items.length) setTimeout(() => loadEnrichment(seq), 90000);
     });
   }
+
+  // Boot: learn which catalogues exist, then load the saved one.
+  fetch("/api/languages").then(r => r.json()).then(list => {
+    LANGS = list;
+    if (!LANGS.some(l => l.code === LANG && l.ready)) {
+      const first = LANGS.find(l => l.ready) || LANGS[0];
+      if (first) { LANG = first.code; localStorage.setItem(LANG_KEY, LANG); }
+    }
+    renderLangSwitch();
+    applyLangCopy();
+    reloadCatalogue();
+  });
 
   function buildDecades() {
     let opts = '<option value="">Any decade</option>';
@@ -834,11 +950,9 @@
   $("tab-cat").onclick = () => selectTab(true);
   $("tab-diff").onclick = () => selectTab(false);
 
-  let diffsLoaded = false;
-  let diffData = [];
   function loadDiffs() {
     if (diffsLoaded) return; diffsLoaded = true;
-    fetch("/api/diffs").then(r => r.json()).then(list => {
+    fetch(api("/api/diffs")).then(r => r.json()).then(list => {
       diffData = list;
       if (!list.length) {
         $("diffs").innerHTML = '<div class="empty">No weekly diffs yet — they appear after the second weekly run (run <code>python3 diff.py</code> after a new snapshot).</div>';
