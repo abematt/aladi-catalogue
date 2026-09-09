@@ -1,3 +1,5 @@
+> **Stale (2026-09-09):** the deployment is live; see the Deployment section of CLAUDE.md. Kept for the history of the self-build phases.
+
 # Session handoff — Hetzner self-build (updated 2026-08-09, evening)
 
 Continuity doc for resuming the deployment project in a fresh Claude session.
