@@ -93,7 +93,9 @@ password hash, so changing a password signs that user out everywhere.
 **Access requests** (added 2026-10-04): `/request-access` off the sign-in page →
 appended to `data/access-requests.jsonl` on the box and emailed to
 `ALADI_ALERT_TO` via `ALADI_SMTP_*` (all in `.env`; `--test-email` probes it).
-Nothing is granted automatically — Abraham adds a user by hand. New hash:
+Nothing is granted automatically — Abraham adds a user by hand: README →
+"Granting a seat" (hash on the box, append `,name:hash` to `ALADI_USERS` with
+`$$`, `up -d`, send credentials personally; removing the entry revokes at once). New hash:
 `python3 server.py --hash-password`. **Escape every `$` in `.env` as `$$`** —
 compose interpolates env files. Only two users exist, both household.
 

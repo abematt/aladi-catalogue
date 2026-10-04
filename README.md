@@ -117,6 +117,23 @@ The app runs as a Docker Compose stack on a small VPS behind a shared Caddy that
 | Get access requests by email | set `ALADI_ALERT_TO`, `ALADI_SMTP_HOST`, `ALADI_SMTP_PORT` (587 STARTTLS or 465 TLS), `ALADI_SMTP_USER`, `ALADI_SMTP_PASS` in `.env`; verify with `docker compose -f deploy/compose.yaml exec web python server.py --test-email` |
 | See who asked | on the box: `cat /srv/aladi/data/access-requests.jsonl` |
 
+### Granting a seat
+
+An access request arrives as an email titled `[Aladí] access request from <name>` (and as a line in `data/access-requests.jsonl`). Nothing happens until you do this, on the box:
+
+```bash
+cd /srv/aladi
+docker compose -f deploy/compose.yaml exec web python server.py --hash-password
+#   Password: ········   → prints  pbkdf2$200000$<salt>$<hash>
+```
+
+1. Pick a short lowercase username for them (it's what they type to sign in).
+2. Open `/srv/aladi/.env` and append `,<username>:<hash>` to the `ALADI_USERS` line — the entries are comma-separated — **doubling every `$` in the hash to `$$`**.
+3. `docker compose -f deploy/compose.yaml up -d` to restart. If the hash was mis-escaped the container exits with a message saying so instead of starting without a login.
+4. Send them the username and password yourself (the app never emails requesters). They sign in at `/login`; the session lasts 30 days per device.
+
+To revoke someone, delete their entry from `ALADI_USERS` and restart — their sessions stop working immediately, since every session is checked against the current user list. To reset a password, replace the hash the same way; the old sessions for that user die with it.
+
 > [!TIP]
 > Compose interpolates `.env` files, hence the `$$`. If a hash is mis-escaped the container exits with a message naming the problem instead of starting with the login off — that's `ALADI_REQUIRE_AUTH=1` in `deploy/compose.yaml` doing its job. Local dev (`python3 server.py` with no env) has no login at all.
 
