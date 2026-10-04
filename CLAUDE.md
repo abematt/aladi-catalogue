@@ -89,7 +89,11 @@ Unset → no login, which is the local-dev default. **The deploy compose sets
 `ALADI_REQUIRE_AUTH=1` and `ALADI_TRUST_PROXY=1`** (added 2026-10-04): the
 container refuses to start without a parsable user list, and the lockout keys
 off Caddy's appended `X-Forwarded-For` hop. Sessions are signed over the
-password hash, so changing a password signs that user out everywhere. New hash:
+password hash, so changing a password signs that user out everywhere.
+**Access requests** (added 2026-10-04): `/request-access` off the sign-in page →
+appended to `data/access-requests.jsonl` on the box and emailed to
+`ALADI_ALERT_TO` via `ALADI_SMTP_*` (all in `.env`; `--test-email` probes it).
+Nothing is granted automatically — Abraham adds a user by hand. New hash:
 `python3 server.py --hash-password`. **Escape every `$` in `.env` as `$$`** —
 compose interpolates env files. Only two users exist, both household.
 

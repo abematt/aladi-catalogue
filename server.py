@@ -18,6 +18,10 @@ Auth: set ALADI_USERS (+ ALADI_SECRET) to require a login — see the Auth block
       python3 server.py --hash-password   prints a hash for ALADI_USERS.
       ALADI_REQUIRE_AUTH=1 refuses to start unless a login is configured.
       ALADI_TRUST_PROXY=1 reads the client IP from X-Forwarded-For (behind Caddy).
+      Access requests: the sign-in page links to /request-access; each request is
+      appended to data/access-requests.jsonl and emailed to ALADI_ALERT_TO via
+      ALADI_SMTP_HOST/PORT/USER/PASS (+ ALADI_SMTP_FROM).  python3 server.py
+      --test-email sends a probe.
 """
 import base64
 import hashlib
@@ -25,6 +29,9 @@ import hmac
 import html as htmllib
 import json
 import secrets
+import smtplib
+import datetime
+from email.message import EmailMessage
 import sys
 import os
 import re
@@ -98,6 +105,9 @@ def check_auth_config():
         sys.exit("ALADI_REQUIRE_AUTH=1 but no users configured. Refusing to start.")
     if AUTH_ON and not os.environ.get("ALADI_SECRET"):
         print("warning: ALADI_SECRET unset — sessions will not survive a restart", file=sys.stderr)
+    if AUTH_ON and not MAIL_ON:
+        print("warning: ALADI_ALERT_TO / ALADI_SMTP_HOST unset — access requests are "
+              "logged to data/access-requests.jsonl but not emailed", file=sys.stderr)
 
 
 def hash_password(pw, salt=None, iters=PBKDF2_ITERS):
@@ -177,13 +187,88 @@ def check_password(user, pw):
     return False
 
 
-LOGIN_PAGE = """<!DOCTYPE html>
+# ── Access requests ──────────────────────────────────────────────────────
+# A stranger who lands on the sign-in page can ask for access. Nothing is
+# granted automatically: the request is appended to data/access-requests.jsonl
+# and emailed to ALADI_ALERT_TO; a human adds a user (or doesn't).
+ALERT_TO = os.environ.get("ALADI_ALERT_TO", "").strip()
+SMTP = {
+    "host": os.environ.get("ALADI_SMTP_HOST", "").strip(),
+    "port": int(os.environ.get("ALADI_SMTP_PORT", "587") or 587),
+    "user": os.environ.get("ALADI_SMTP_USER", "").strip(),
+    "pw": os.environ.get("ALADI_SMTP_PASS", ""),
+    "from": os.environ.get("ALADI_SMTP_FROM", "").strip() or os.environ.get("ALADI_SMTP_USER", "").strip(),
+}
+MAIL_ON = bool(ALERT_TO and SMTP["host"])
+REQ_LIMIT, REQ_WINDOW = 3, 3600        # per IP per hour
+REQ_GLOBAL_LIMIT = 20                  # everyone, same window
+REQUESTS_LOG = os.path.join(ROOT, "data", "access-requests.jsonl")
+_reqs = {}
+_reqs_lock = threading.Lock()
+
+
+def send_mail(subject, body):
+    """Blocking SMTP send (STARTTLS, or implicit TLS on port 465)."""
+    msg = EmailMessage()
+    msg["Subject"], msg["From"], msg["To"] = subject, SMTP["from"], ALERT_TO
+    msg.set_content(body)
+    if SMTP["port"] == 465:
+        cls, kw = smtplib.SMTP_SSL, {}
+    else:
+        cls, kw = smtplib.SMTP, {}
+    with cls(SMTP["host"], SMTP["port"], timeout=20, **kw) as sm:
+        if SMTP["port"] != 465:
+            sm.starttls()
+        if SMTP["user"]:
+            sm.login(SMTP["user"], SMTP["pw"])
+        sm.send_message(msg)
+
+
+def too_many_requests(ip):
+    now = time.time()
+    with _reqs_lock:
+        for k in (f"ip:{ip}", "*"):
+            _reqs[k] = [t for t in _reqs.get(k, []) if now - t < REQ_WINDOW]
+        return (len(_reqs[f"ip:{ip}"]) >= REQ_LIMIT
+                or len(_reqs["*"]) >= REQ_GLOBAL_LIMIT)
+
+
+def note_request(ip):
+    now = time.time()
+    with _reqs_lock:
+        for k in (f"ip:{ip}", "*"):
+            _reqs.setdefault(k, []).append(now)
+
+
+def file_access_request(name, email, note, ip):
+    """Append to the log, then email in the background so the page returns at once."""
+    rec = {"at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+           "name": name, "email": email, "note": note, "ip": ip}
+    os.makedirs(os.path.dirname(REQUESTS_LOG), exist_ok=True)
+    with open(REQUESTS_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    if not MAIL_ON:
+        print(f"access request (no mail configured): {rec}", file=sys.stderr)
+        return
+    body = (f"Someone asked for access to the Aladí catalogue.\n\n"
+            f"Name:  {name}\nEmail: {email}\nNote:  {note or '-'}\nIP:    {ip}\nAt:    {rec['at']}\n\n"
+            f"To grant it:  python3 server.py --hash-password  →  add to ALADI_USERS in .env  →  up -d\n"
+            f"Every request is also in data/access-requests.jsonl.")
+    def go():
+        try:
+            send_mail(f"[Aladí] access request from {name}", body)
+        except Exception as e:  # never surface to the requester
+            print(f"access-request mail failed: {e!r}", file=sys.stderr)
+    threading.Thread(target=go, daemon=True).start()
+
+
+PAGE_SHELL = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="robots" content="noindex, nofollow">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in · Aladí Catalogue</title>
+<title>{{title}} · Aladí Catalogue</title>
 <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -218,8 +303,12 @@ LOGIN_PAGE = """<!DOCTYPE html>
   .lede { color: var(--mid); font-size: 14px; margin: 12px 0 30px; }
   form { border-top: 1px solid var(--ink); padding-top: 22px; display: grid; gap: 18px; }
   label { display: grid; gap: 7px; }
-  input { font-family: var(--font-body); font-size: 15px; color: var(--ink); background: var(--chalk); border: 1px solid var(--rule); border-radius: 0; padding: 10px 12px; width: 100%; }
-  input:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; border-color: var(--ink); }
+  input, textarea { font-family: var(--font-body); font-size: 15px; color: var(--ink); background: var(--chalk); border: 1px solid var(--rule); border-radius: 0; padding: 10px 12px; width: 100%; }
+  textarea { min-height: 88px; resize: vertical; }
+  .aside { font-size: 13px; color: var(--mid); margin: 26px 0 0; }
+  .aside a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; border-color: var(--ink); }
   .cta-btn { background: var(--hi); color: var(--on-hi); border: none; border-radius: 0; padding: 11px 16px; cursor: pointer; font-family: var(--font-mono); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; justify-self: start; transition: opacity 0.15s; }
   .cta-btn:hover { opacity: 0.82; }
   .cta-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
@@ -237,16 +326,7 @@ LOGIN_PAGE = """<!DOCTYPE html>
 <nav class="news-nav"><a class="news-nav-logo" href="/">ALADÍ <em>/ {{langs_native}}</em></a><div class="news-nav-right"><span class="eyebrow">private shelf</span><button class="icon-btn" id="themebtn" type="button" title="Toggle light / dark" aria-label="Toggle light or dark theme">◐</button></div></nav>
 <main>
   <div class="card">
-    <span class="eyebrow">Sign in</span>
-    <h1>The shelf is for two readers.</h1>
-    <p class="lede">Your session stays open for 30 days on this device.</p>
-    <form method="post" action="/login" autocomplete="on">
-      <input type="hidden" name="next" value="{{next}}">
-      <p class="error" role="alert" {{err_hidden}}>{{error}}</p>
-      <label><span class="eyebrow">Name</span><input name="user" autocomplete="username" autocapitalize="none" autofocus required value="{{user}}"></label>
-      <label><span class="eyebrow">Password</span><input name="password" type="password" autocomplete="current-password" required></label>
-      <button class="cta-btn" type="submit">Open the catalogue</button>
-    </form>
+{{body}}
   </div>
 </main>
 <footer><span class="eyebrow">aladi.diba.cat · {{langs_labels}} items · weekly sync</span></footer>
@@ -264,19 +344,59 @@ LOGIN_PAGE = """<!DOCTYPE html>
 """
 
 
-def render_login(error="", user="", nxt="/"):
-    # No language is chosen until the app loads, so the sign-in page just names
-    # the catalogues — straight from the registry, so a new language shows up
-    # here without another edit.
+LOGIN_BODY = """    <span class="eyebrow">Sign in</span>
+    <h1>The shelf is for two readers.</h1>
+    <p class="lede">Your session stays open for 30 days on this device.</p>
+    <form method="post" action="/login" autocomplete="on">
+      <input type="hidden" name="next" value="{{next}}">
+      <p class="error" role="alert" {{err_hidden}}>{{error}}</p>
+      <label><span class="eyebrow">Name</span><input name="user" autocomplete="username" autocapitalize="none" autofocus required value="{{user}}"></label>
+      <label><span class="eyebrow">Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="cta-btn" type="submit">Open the catalogue</button>
+    </form>
+    <p class="aside">Not one of the two? <a href="/request-access">Ask for a seat on the shelf.</a></p>"""
+
+REQUEST_BODY = """    <span class="eyebrow">Request access</span>
+    <h1>Ask for a seat on the shelf.</h1>
+    <p class="lede">This is a private catalogue for a couple of readers in Barcelona. Say who you are and the owner gets an email; if there's room, you'll hear back.</p>
+    <form method="post" action="/request-access" autocomplete="on">
+      <p class="error" role="alert" {{err_hidden}}>{{error}}</p>
+      <label><span class="eyebrow">Name</span><input name="name" autocomplete="name" maxlength="80" autofocus required value="{{name}}"></label>
+      <label><span class="eyebrow">Email</span><input name="email" type="email" autocomplete="email" maxlength="120" required value="{{email}}"></label>
+      <label><span class="eyebrow">Why (optional)</span><textarea name="note" maxlength="500">{{note}}</textarea></label>
+      <label class="hp" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label>
+      <button class="cta-btn" type="submit">Send the request</button>
+    </form>
+    <p class="aside"><a href="/login">Back to sign in</a></p>"""
+
+THANKS_BODY = """    <span class="eyebrow">Request sent</span>
+    <h1>Thanks, {{name}}.</h1>
+    <p class="lede">The owner has your note. If a seat opens up you'll get an email at {{email}} with a name and password.</p>
+    <p class="aside"><a href="/login">Back to sign in</a></p>"""
+
+
+def render_page(title, body, **vars):
+    # No language is chosen until the app loads, so these pages just name the
+    # catalogues — straight from the registry, so a new language shows up here
+    # without another edit.
     natives = [c["native"] for c in langs.LANGS.values()]
     labels = [c["label"].lower() for c in langs.LANGS.values()]
-    page = LOGIN_PAGE
-    for k, v in {"error": htmllib.escape(error), "err_hidden": "" if error else "hidden",
-                 "user": htmllib.escape(user), "next": htmllib.escape(nxt),
-                 "langs_native": htmllib.escape(" · ".join(natives)),
-                 "langs_labels": htmllib.escape(" & ".join(labels))}.items():
-        page = page.replace("{{%s}}" % k, v)
+    page = PAGE_SHELL.replace("{{body}}", body).replace("{{title}}", htmllib.escape(title))
+    vars.setdefault("error", "")
+    vars["err_hidden"] = "" if vars["error"] else "hidden"
+    vars["langs_native"] = " · ".join(natives)
+    vars["langs_labels"] = " & ".join(labels)
+    for k, v in vars.items():
+        page = page.replace("{{%s}}" % k, htmllib.escape(str(v)))
     return page.encode()
+
+
+def render_login(error="", user="", nxt="/"):
+    return render_page("Sign in", LOGIN_BODY, error=error, user=user, next=nxt)
+
+
+def render_request(error="", name="", email="", note=""):
+    return render_page("Request access", REQUEST_BODY, error=error, name=name, email=email, note=note)
 
 
 def safe_next(nxt):
@@ -456,12 +576,31 @@ class Handler(SimpleHTTPRequestHandler):
             self.redirect(f"/login?next={nxt}")
         return False
 
+    def post_request_access(self, form):
+        if not AUTH_ON:
+            return self.redirect("/")
+        name = " ".join(form.get("name", [""])[0].split())[:80]
+        email = form.get("email", [""])[0].strip()[:120]
+        note = form.get("note", [""])[0].strip()[:500]
+        if form.get("website", [""])[0]:          # honeypot: bots fill every field
+            return self.send_html(render_page("Request sent", THANKS_BODY, name=name, email=email))
+        if not name or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            return self.send_html(render_request("A name and a working email, please.", name, email, note), 400)
+        ip = self.client_ip()
+        if too_many_requests(ip):
+            return self.send_html(render_request("That's enough requests for now — try again in an hour.", name, email, note), 429)
+        note_request(ip)
+        file_access_request(name, email, note, ip)
+        self.send_html(render_page("Request sent", THANKS_BODY, name=name, email=email))
+
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path != "/login":
+        if parsed.path not in ("/login", "/request-access"):
             return self.send_json({"error": "not found"}, 404)
         length = int(self.headers.get("Content-Length", "0") or 0)
         form = urllib.parse.parse_qs(self.rfile.read(min(length, 8192)).decode(errors="replace"))
+        if parsed.path == "/request-access":
+            return self.post_request_access(form)
         user = form.get("user", [""])[0].strip().lower()
         pw = form.get("password", [""])[0]
         nxt = safe_next(form.get("next", ["/"])[0])
@@ -484,6 +623,10 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.redirect("/")
             nxt = safe_next(urllib.parse.parse_qs(parsed.query).get("next", ["/"])[0])
             return self.send_html(render_login(nxt=nxt))
+        if parsed.path == "/request-access":
+            if not AUTH_ON:
+                return self.redirect("/")
+            return self.send_html(render_request())
         if parsed.path == "/logout":
             return self.redirect("/login" if AUTH_ON else "/",
                                  f"{SESSION_COOKIE}=; Max-Age=0{self.cookie_attrs()}")
@@ -564,6 +707,12 @@ if __name__ == "__main__":
         if pw != getpass.getpass("Again: "):
             sys.exit("passwords differ")
         print(hash_password(pw))
+        sys.exit(0)
+    if "--test-email" in sys.argv:
+        if not MAIL_ON:
+            sys.exit("set ALADI_ALERT_TO and ALADI_SMTP_HOST (+ PORT/USER/PASS) first")
+        send_mail("[Aladí] test email", "If you can read this, access-request alerts will arrive.")
+        print(f"sent to {ALERT_TO} via {SMTP['host']}:{SMTP['port']}")
         sys.exit(0)
 
     class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):

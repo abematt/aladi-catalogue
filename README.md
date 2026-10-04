@@ -85,6 +85,8 @@ python3 server.py --hash-password         # → pbkdf2$200000$<salt>$<hash>
 ALADI_USERS='me:pbkdf2$…' ALADI_SECRET=… python3 server.py
 ```
 
+**Asking for a seat.** The sign-in page links to `/request-access`: a name, an email and an optional note. Nothing is granted automatically — each request is appended to `data/access-requests.jsonl` and emailed to the owner (`ALADI_ALERT_TO`, over plain `smtplib` with `ALADI_SMTP_HOST/PORT/USER/PASS`), who adds a user by hand or doesn't. A honeypot field and a 3-per-hour-per-IP cap keep the form from becoming a spam relay; `python3 server.py --test-email` checks the SMTP setup.
+
 </details>
 
 <details>
@@ -112,6 +114,8 @@ The app runs as a Docker Compose stack on a small VPS behind a shared Caddy that
 | Sync one language only | `docker compose -f deploy/compose.yaml run --rm -e ALADI_LANGS=ita jobs` |
 | Add or change a login | `python3 server.py --hash-password` → write `name:hash` into `ALADI_USERS` in `/srv/aladi/.env` **with every `$` doubled to `$$`**, then `up -d` |
 | Sign everyone out | change `ALADI_SECRET` in `.env`, then `up -d` |
+| Get access requests by email | set `ALADI_ALERT_TO`, `ALADI_SMTP_HOST`, `ALADI_SMTP_PORT` (587 STARTTLS or 465 TLS), `ALADI_SMTP_USER`, `ALADI_SMTP_PASS` in `.env`; verify with `docker compose -f deploy/compose.yaml exec web python server.py --test-email` |
+| See who asked | on the box: `cat /srv/aladi/data/access-requests.jsonl` |
 
 > [!TIP]
 > Compose interpolates `.env` files, hence the `$$`. If a hash is mis-escaped the container exits with a message naming the problem instead of starting with the login off — that's `ALADI_REQUIRE_AUTH=1` in `deploy/compose.yaml` doing its job. Local dev (`python3 server.py` with no env) has no login at all.
