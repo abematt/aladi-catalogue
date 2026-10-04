@@ -76,7 +76,7 @@ branch codes → names (scraped from the OPAC search form).
 ## Deployment (live since 2026-09-09)
 
 Runs as the third app on Abraham's Hetzner box (the same one as
-`~/ledger`; see `ledger/docs/server-handoff.md` for the box), at a private
+`~/dev/self-hosted/ledger`; see `home/CLAUDE.md` there for the box), at a private
 subdomain behind the box's shared Caddy
 (`/srv/caddy/sites/aladi.caddy`: `reverse_proxy aladi:8377`, noindex header).
 No published ports; TLS lives in Caddy.
