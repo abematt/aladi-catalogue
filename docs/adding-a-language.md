@@ -297,8 +297,8 @@ improvements once the titles were read.
 
 ## Step 5 — Deploy
 
-The production box is `root@<box>`, serving
-https://<private host>. Full operational detail is in the README's
+The production box is `root@<box>` (a small VPS; the app sits behind its Caddy at
+a private subdomain). Full operational detail is in the README's
 "Running in production"; what matters for a new language:
 
 **The box's `data/` is the source of truth and is never synced from the Mac.**

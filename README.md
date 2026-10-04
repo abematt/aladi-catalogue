@@ -1,146 +1,125 @@
+<div align="center">
+
 # Aladí Catalogue
 
-A local, browsable catalogue of **every item in a given language** in the Aladi
-OPAC (aladi.diba.cat — the Barcelona province municipal libraries network) —
-books, music CDs, vinyl, DVDs, printed scores, board games, magazines, maps,
-video games — with weekly snapshots, week-over-week diffs, and **on-demand live
-availability** (which copies are on the shelf vs checked out, per library).
+**Every English-language item in Barcelona's public libraries, on one searchable shelf.**
 
-Two catalogues today, switchable from the wordmark in the app's header:
+The Aladí OPAC (aladi.diba.cat, 249 municipal branches) has no way to browse by language — its language filter only sits on top of a keyword search. This app rebuilds the whole English (and Italian) catalogue as a weekly snapshot, enriches each record over Z39.50, and puts the filters the real site never had in front of it: type, genre, audience, decade, *your* libraries, and live shelf availability on click.
 
-| Language | Code | Scale |
-|---|---|---|
-| English | `eng` | ~64.5k items |
-| Italian | `ita` | ~7.7k items |
+<img src="https://img.shields.io/badge/python-3.12%20·%20stdlib%20only-3776AB?logo=python&logoColor=white" alt="python">&nbsp;<img src="https://img.shields.io/badge/items-64.5k%20eng%20·%207.7k%20ita-d97757" alt="items">&nbsp;<img src="https://img.shields.io/badge/sync-weekly-black" alt="weekly">&nbsp;<img src="https://img.shields.io/badge/access-private%20·%20two%20readers-3da638" alt="private">&nbsp;<img src="https://img.shields.io/github/license/abematt/aladi-catalogue?color=3da638" alt="license">
 
-Built because the OPAC has no "browse everything in one language" view — its
-language filter only applies on top of a keyword search.
+<img src="docs/screenshots/catalogue.png" alt="The catalogue view: hero, stat tiles, material-type chips, search and the first rows" width="820">
 
-## Use it
+</div>
 
-```bash
-python3 server.py        # then open http://localhost:8377
-```
+| | What you get | Where it comes from |
+|:-:|---|---|
+| ⌕ | **Instant search** over title · author · publisher, diacritic-insensitive, with year range and sorting | the weekly snapshot, held in the browser |
+| ▤ | **Type chips** — books, CDs, vinyl, DVDs, scores, board games, magazines, maps, video games, each with a live count | material code from the OPAC search results |
+| ✦ | **Genre + audience chips** for books (crime, SF/fantasy, romance, history, tech, kids…) | MARC `008` + Catalan subject headings, over Z39.50 |
+| ◫ | **My libraries** — pick your branches and every count narrows to what they actually hold | holding codes from MARC `907 $i` |
+| ● | **Live availability** on row click: each copy's library, call number and status (`Available`, `DUE 14-08-26`, `In Transit`) | the record page, fetched once per click, cached 5 min |
+| Δ | **Weekly changes** — what entered and left the catalogue between snapshots | `diff.py` over the two newest snapshots |
+| ⇣ | **CSV export** of whatever is currently filtered, and a Google-search button per row | the browser |
 
-- **Catalogue tab** — instant search over title/author/publisher (diacritic-
-  insensitive), year range, sorting, CSV export of whatever's filtered.
-- Click any book — fetches its record page **live** and shows every copy across
-  the network: library, call number, and status (`Available`, `DUE 14-08-26` =
-  checked out with due date, `In Transit`, …). Nothing is bulk-polled; one
-  request per click, cached 5 min.
-- **Weekly changes tab** — what entered/left the catalogue between snapshots.
+Switch catalogue from the wordmark: `ALADÍ / english · italiano`. Adding a language is one registry entry plus a scrape — [docs/adding-a-language.md](docs/adding-a-language.md) is the runbook (and explains why Catalan and Spanish, at 300–450k items, are deliberately out).
 
-## Data pipeline
-
-| Piece | Job |
-|---|---|
-| `langs.py` | The language registry — which catalogues exist, and each one's broad query + residual sweeps. Add a language here. |
-| `scraper.py` | Full sync → `data/<lang>/snapshots/YYYY-MM-DD.json` + `.csv`. English is ~2,500 requests, ~45 min at the default 4 workers; Italian is roughly a tenth of that. Resumable (`--resume`). |
-| `diff.py` | Compares the two newest snapshots → `data/<lang>/diffs/<from>__<to>.json`. |
-| `enrich.py` | Per-record MARC data over Z39.50 → `data/<lang>/enrichment.jsonl`. |
-| `server.py` | Serves the app + `/api/catalogue`, `/api/enrichment`, `/api/snapshots`, `/api/diffs` (all taking `?lang=`), plus `/api/languages`, `/api/libraries` and `/api/availability?bib=…`. |
-| `run_weekly.sh` | scraper + diff + enrich, once per language, logged to `logs/`. |
-
-Every script defaults to English and takes `--lang=<code>`:
+## Run it
 
 ```bash
-python3 scraper.py --lang=ita     # Italian full sync
-python3 diff.py --lang=ita
-python3 enrich.py --lang=ita
-ALADI_LANGS=ita ./run_weekly.sh   # weekly pass for one language only
+python3 scraper.py                 # full English sync → data/eng/snapshots/  (~45 min, 4 workers)
+python3 enrich.py                  # MARC enrichment over Z39.50 → data/eng/enrichment.jsonl
+python3 server.py                  # open http://localhost:8377
 ```
 
-State is per language under `data/<lang>/` (`snapshots/`, `diffs/`,
-`enrichment.jsonl`), so the catalogues never mix. `data/libraries.json` is
-shared — branch codes are language-independent, and so is the app's "my
-libraries" selection.
+Pure Python standard library. The one binary dependency is [`yaz-client`](https://www.indexdata.com/resources/software/yaz/) for Z39.50 (`brew install yaz` / `apt install yaz`); the `Dockerfile` bakes it in. Every script takes `--lang=<code>` (default `eng`); `./run_weekly.sh` chains scrape → diff → enrich for each language in `$ALADI_LANGS`.
 
-### Adding another language
+## How it works
 
-**Full runbook: [docs/adding-a-language.md](docs/adding-a-language.md)** — the
-OPAC's language menu, how to size a candidate before committing (Catalan and
-Spanish are both far too large — they're the local languages), the registry
-entry, verification, the genre-rule traps, and the deploy order.
+```mermaid
+flowchart LR
+    O[(aladi.diba.cat<br>OPAC)] -->|"broad boolean query<br>+ residual sweeps"| S[scraper.py]
+    S --> N[("data/&lt;lang&gt;/snapshots/<br>YYYY-MM-DD.json")]
+    N --> D[diff.py] --> F[("diffs/")]
+    Z[(Z39.50<br>port 210)] -->|"MARC per record"| E[enrich.py] --> J[("enrichment.jsonl")]
+    N & F & J --> W[server.py<br>:8377] --> U[app/index.html]
+    U -.->|"row click"| W -.->|"one record page,<br>5-min cache"| O
+```
 
-The short version: add an entry to `langs.py` with a `main_q` of that
-language's commonest stopwords plus a `residual_terms` list, then run the three
-scripts with the new `--lang=`. Nothing else needs touching — the server picks
-the language up from `/api/languages` and the app renders a new segment in the
-header switch.
+Four scripts connected only by JSON files on disk; the UI is a single HTML file that loads the whole snapshot once and filters in memory.
 
-### How the scrape covers "everything"
+<details>
+<summary><b>Getting "everything" out of an OPAC that caps results at 32,000</b></summary>
+<br>
 
-The OPAC (classic Innovative Millennium) requires a keyword and caps results at
-32,000, so each language gets one broad boolean query of its commonest
-stopwords (English: `and OR the OR a OR in OR de OR of`, ≈28.6k books; Italian:
-`e OR di OR la OR il OR che OR un …`, ≈5.3k books) plus residual sweeps
-(`term AND NOT (main)`) to catch records containing none of the main words.
-Deduped by bib record id. Coverage is near-total but not provably complete — a
-record whose indexed text contains none of the probe words would be missed. On
-Italian the residual sweeps return single-digit extras, which is the sign the
-main query already reached nearly everything.
+The catalogue is classic Innovative Millennium: it requires a keyword, has no list-all, and truncates any result set at 32k. The trick is one broad boolean query of the language's commonest stopwords — English `and OR the OR a OR in OR de OR of` returns ≈28.6k books, Italian `e OR di OR la OR il OR che OR un …` ≈5.3k — run once per material type, then **residual sweeps** of the form `term AND NOT (main query)` to catch records whose indexed text contains none of the main words. Everything is deduplicated by bib record id.
 
-Note the `S171*eng` in every OPAC URL is the site's own **interface** language
-and stays `eng` for all catalogues; the *item* language is the `l=` parameter.
+Coverage is near-total rather than provably complete: a record containing none of the probe words would be missed. The sign that the main query already reached nearly everything is that the residual sweeps return single-digit extras — which is what Italian shows.
 
-## Weekly schedule
+Two things that bit: author lines carry lifespans (`Grafton, Sue, 1940-2017`), so imprint detection has to run on the *imprint* line, not the first thing that looks like a year; and `S171*eng` in every OPAC URL is the site's **interface** language, which stays `eng` for every catalogue — the item language is the separate `l=` parameter.
 
-`com.abraham.aladi-weekly.plist` runs `run_weekly.sh` every **Sunday 07:30**
-(if the Mac is asleep, it fires on next wake).
+</details>
+
+<details>
+<summary><b>Genres from Catalan subject headings, for every language</b></summary>
+<br>
+
+Z39.50 is the sanctioned machine interface to the catalogue, and the MARC it returns is far richer than the HTML: `008` gives literary form and target audience, `6xx` gives the subject headings, `907 $i` gives the holding libraries. The headings are in Catalan regardless of the item's language, so one set of genre rules serves English and Italian alike.
+
+The rules key off **stems** on diacritic-folded text because Catalan plurals shift spelling (`policíaca` → `policíaques`), and the middot in `l·l` is not a sentence end. Folding has its own trap: `italia` matches both *Italià* (the language) and *Itàlia* (the country). The catalogue writes a language as the heading (`Italià — Gramàtica`) and a country as a subdivision (`Música popular — Itàlia`), so position is the signal. After any rule change, `enrich.py --rederive` recomputes every genre locally from the stored subjects — no network — and the counts are diffed before and after, because a rule that looks right can move hundreds of records.
+
+</details>
+
+<details>
+<summary><b>Why it's behind a login</b></summary>
+<br>
+
+<div align="center"><img src="docs/screenshots/login.png" alt="The sign-in page" width="560"></div>
+
+The OPAC's `robots.txt` disallows `/search` and `/record=`: the library network does not want its catalogue indexed or mirrored. A personal tool with a weekly sync is within the spirit of that; a public mirror is not — and every availability lookup is a live request to the library's servers, which must stay one-per-click, never anything a stranger can drive. So the deployment is private by design, and the code is what's public.
+
+The login is in `server.py` with no framework: PBKDF2-SHA256 passwords, a signed 30-day session cookie (`HttpOnly`, `SameSite=Lax`, `Secure` behind TLS), lockout per IP, per username and globally after repeated failures, constant-time verification against a dummy hash for unknown usernames, and `noindex` / `nosniff` / frame-deny / `no-store` on every response. It **fails closed**: with `ALADI_REQUIRE_AUTH=1` the server refuses to start unless a valid user list parsed, so a mis-escaped `$` in an env file can never silently open the site. Sessions are signed over the password hash, so changing a password signs that user out everywhere.
 
 ```bash
-# install / reinstall
-cp com.abraham.aladi-weekly.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.abraham.aladi-weekly.plist
-# remove
-launchctl unload ~/Library/LaunchAgents/com.abraham.aladi-weekly.plist
-rm ~/Library/LaunchAgents/com.abraham.aladi-weekly.plist
+python3 server.py --hash-password         # → pbkdf2$200000$<salt>$<hash>
+ALADI_USERS='me:pbkdf2$…' ALADI_SECRET=… python3 server.py
 ```
 
-## Politeness / terms
+</details>
 
-- `aladi.diba.cat/robots.txt` disallows `/search` and `/record=` for robots; the
-  file's stated purpose is to stop search engines *indexing* those pages. A
-  personal weekly sync isn't indexing, but respect the spirit: **keep workers at
-  4, keep the weekly cadence, don't share a hosted mirror.** Availability
-  lookups are one request per click.
-- No bot checks observed: no captcha/WAF; ~5k requests with zero blocks. The
-  main risk is server-side throttling if concurrency is raised — don't.
-- If this ever needs to be more than personal, ask Diba for an export, or check
-  their Z39.50 service (the standard protocol for programmatic catalog queries).
+<details>
+<summary><b>Politeness rules the scraper lives by</b></summary>
+<br>
+
+- **4 workers**, one full sync a week, per language — about 2,500 requests for English, a tenth of that for Italian. Roughly 5k requests a run has drawn zero blocks; the risk is server-side throttling if concurrency is raised, so it isn't.
+- **Z39.50 for bulk record data.** It is the interface built for machine queries. Result sets cap at 500 per search, so enrichment is per record, not enumeration.
+- **Availability is on demand only.** One request per click, five-minute cache, never bulk-polled.
+- **No public mirror** — see the login section above.
+- Need more than personal use? Ask the Diputació de Barcelona for an export rather than scaling this up.
+
+</details>
 
 ## Running in production
 
-Live at **https://<private host>** (since 2026-09-09) on the Hetzner box
-shared with the ledger and drive apps (`~/ledger/docs/server-handoff.md` describes the
-box). Stack: `deploy/compose.yaml` behind the box's shared Caddy, which owns TLS.
-Sign-in is in the app: two accounts, 30-day session cookie, lockout after six bad
-attempts. Google is told not to index it, and the OPAC's politeness rules still apply
-(one scrape a week, availability lookups only on click).
+The app runs as a Docker Compose stack on a small VPS behind a shared Caddy that owns TLS, at a private subdomain with the `noindex` header set twice over. `data/` on the box is the source of truth — the weekly cron (`Sunday 07:30`, Europe/Madrid) scrapes there, and `deploy/push.sh` syncs code only.
 
 | Task | How |
 |---|---|
 | Deploy a code change | `deploy/push.sh root@<box>` (rsyncs code, rebuilds, restarts; never touches `data/`, `logs/`, `.env`) |
 | Watch the app | `ssh root@<box> docker logs -f aladi-web-1` |
-| Check the weekly run | on the box: `tail /srv/aladi/logs/cron.log`, `ls /srv/aladi/logs/`, `ls /srv/aladi/data/eng/snapshots/` (and `data/ita/…`) — cron line via `crontab -l` (Sundays 07:30 Europe/Madrid) |
-| Run the weekly job by hand | on the box: `cd /srv/aladi && docker compose -f deploy/compose.yaml run --rm jobs` (a full scrape of every language — don't do this casually) |
-| Sync one language only | on the box: `docker compose -f deploy/compose.yaml run --rm -e ALADI_LANGS=ita jobs` |
-| Add or change a login | `python3 server.py --hash-password` → write `name:hash` into `ALADI_USERS` in `/srv/aladi/.env` **with every `$` doubled to `$$`**, then on the box `docker compose -f deploy/compose.yaml up -d` |
-| Sign everyone out | change `ALADI_SECRET` in `/srv/aladi/.env`, then `up -d` |
-| Restart | on the box: `cd /srv/aladi && docker compose -f deploy/compose.yaml restart` |
+| Check the weekly run | on the box: `tail /srv/aladi/logs/cron.log`, `ls /srv/aladi/data/eng/snapshots/` |
+| Run the weekly job by hand | on the box: `docker compose -f deploy/compose.yaml run --rm jobs` (a full scrape of every language — don't do this casually) |
+| Sync one language only | `docker compose -f deploy/compose.yaml run --rm -e ALADI_LANGS=ita jobs` |
+| Add or change a login | `python3 server.py --hash-password` → write `name:hash` into `ALADI_USERS` in `/srv/aladi/.env` **with every `$` doubled to `$$`**, then `up -d` |
+| Sign everyone out | change `ALADI_SECRET` in `.env`, then `up -d` |
 
-Things that will bite: `.env` values are interpolated by compose (hence `$$`); the
-ledger's stack is compose project `deploy`, so never run `down --remove-orphans` on the
-box; the box's `data/` is the source of truth — never rsync `data/` from the Mac again.
-Local dev is unchanged: `python3 server.py` on localhost with no login.
+> [!TIP]
+> Compose interpolates `.env` files, hence the `$$`. If a hash is mis-escaped the container exits with a message naming the problem instead of starting with the login off — that's `ALADI_REQUIRE_AUTH=1` in `deploy/compose.yaml` doing its job. Local dev (`python3 server.py` with no env) has no login at all.
 
-**One-time layout migration (done 2026-09-09).** Data moved from a single
-catalogue to per-language directories. On the box, before deploying the
-multi-language code:
+---
 
-```bash
-cd /srv/aladi/data && mkdir -p eng \
-  && mv snapshots diffs enrichment.jsonl eng/     # libraries.json stays at top level
-```
+<div align="center">
 
-Skip this on a fresh install — the scripts create what they need.
+[Adding a language](docs/adding-a-language.md) · [MIT License](LICENSE)
+
+</div>

@@ -75,9 +75,9 @@ branch codes → names (scraped from the OPAC search form).
 
 ## Deployment (live since 2026-09-09)
 
-Runs as the third app on Abraham's Hetzner box (<box>, the same one as
-`~/ledger`; see `ledger/docs/server-handoff.md` for the box). URL:
-**https://<private host>**, behind the box's shared Caddy
+Runs as the third app on Abraham's Hetzner box (the same one as
+`~/ledger`; see `ledger/docs/server-handoff.md` for the box), at a private
+subdomain behind the box's shared Caddy
 (`/srv/caddy/sites/aladi.caddy`: `reverse_proxy aladi:8377`, noindex header).
 No published ports; TLS lives in Caddy.
 
@@ -85,9 +85,13 @@ No published ports; TLS lives in Caddy.
 cookie, `/logout`, per-IP lockout after 6 failures. Enabled when `ALADI_USERS`
 is set (`name:pbkdf2$...` pairs) plus `ALADI_SECRET`; both live in
 `/srv/aladi/.env` on the box (chmod 600, gitignored, excluded from push.sh).
-Unset → no login, which is the local-dev default. New hash:
+Unset → no login, which is the local-dev default. **The deploy compose sets
+`ALADI_REQUIRE_AUTH=1` and `ALADI_TRUST_PROXY=1`** (added 2026-10-04): the
+container refuses to start without a parsable user list, and the lockout keys
+off Caddy's appended `X-Forwarded-For` hop. Sessions are signed over the
+password hash, so changing a password signs that user out everywhere. New hash:
 `python3 server.py --hash-password`. **Escape every `$` in `.env` as `$$`** —
-compose interpolates env files. Only Abraham and Fefi have users.
+compose interpolates env files. Only two users exist, both household.
 
 - `deploy/compose.yaml` — server stack (`name: aladi`; `web` joins the external `web`
   network with alias `aladi`; `jobs` profile for the weekly run). Root `compose.yaml`
@@ -97,7 +101,7 @@ compose interpolates env files. Only Abraham and Fefi have users.
   rsync from the Mac on 2026-09-09). Never rsync data Mac → box again.
 - Weekly job: root's crontab on the box, `30 7 * * 0` (box TZ Europe/Madrid),
   `docker compose -f deploy/compose.yaml run --rm jobs`, stdout in `logs/cron.log`.
-  The Mac launchd job `com.abraham.aladi-weekly` was retired the same day (plist
-  moved to `~/Library/LaunchAgents.retired/`; the copy in this repo is inert).
+  The Mac launchd job that used to run this was retired the same day and its
+  plist removed from the repo (2026-10-04).
 - The Mac's `data/` is now a frozen copy for local dev only.
 - Day-to-day operations (logs, redeploy, add a user, cron check): README → "Running in production".
