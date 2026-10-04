@@ -16,6 +16,8 @@ under data/<lang>/ to read:
 Run:  python3 server.py   then open http://localhost:8377
 Auth: set ALADI_USERS (+ ALADI_SECRET) to require a login — see the Auth block.
       python3 server.py --hash-password   prints a hash for ALADI_USERS.
+      ALADI_REQUIRE_AUTH=1 refuses to start unless a login is configured.
+      ALADI_TRUST_PROXY=1 reads the client IP from X-Forwarded-For (behind Caddy).
 """
 import base64
 import hashlib
@@ -54,10 +56,17 @@ _enrich_lock = threading.Lock()
 # (generate a hash with  python3 server.py --hash-password).  ALADI_SECRET
 # signs the session cookie; with ALADI_USERS set but no secret, one is made
 # per process (sessions then die on restart).  Unset → no login (local dev).
+#
+# Fail closed: ALADI_REQUIRE_AUTH=1 (set in deploy/compose.yaml) aborts startup
+# when no valid user parsed — a missing .env or an unescaped `$` must never turn
+# the public deployment into an open mirror.  A session is signed over the
+# user's password hash too, so changing a password signs that user out everywhere.
 SESSION_COOKIE = "aladi_session"
 SESSION_TTL = 30 * 24 * 3600
 PBKDF2_ITERS = 200_000
-FAIL_LIMIT, FAIL_WINDOW = 6, 15 * 60
+FAIL_LIMIT, FAIL_WINDOW = 6, 15 * 60      # per client IP and per username
+GLOBAL_FAIL_LIMIT = 30                    # across everyone, same window
+TRUST_PROXY = os.environ.get("ALADI_TRUST_PROXY") == "1"
 
 
 def _parse_users(spec):
@@ -72,8 +81,23 @@ def _parse_users(spec):
 USERS = _parse_users(os.environ.get("ALADI_USERS", ""))
 SECRET = (os.environ.get("ALADI_SECRET") or secrets.token_hex(32)).encode()
 AUTH_ON = bool(USERS)
-_fails = {}  # ip -> [timestamps]
+_fails = {}  # key ("ip:…", "user:…", "*") -> [timestamps]
 _fails_lock = threading.Lock()
+# Verified against when the username is unknown, so a wrong name costs the
+# same time as a wrong password.
+_DUMMY_HASH = None
+
+
+def check_auth_config():
+    """Abort (exit code 2) on a configuration that would silently open the app."""
+    spec = os.environ.get("ALADI_USERS", "")
+    if spec.strip() and not USERS:
+        sys.exit("ALADI_USERS is set but no 'name:pbkdf2$…' entry parsed — "
+                 "in a compose .env every `$` must be written `$$`. Refusing to start.")
+    if os.environ.get("ALADI_REQUIRE_AUTH") == "1" and not AUTH_ON:
+        sys.exit("ALADI_REQUIRE_AUTH=1 but no users configured. Refusing to start.")
+    if AUTH_ON and not os.environ.get("ALADI_SECRET"):
+        print("warning: ALADI_SECRET unset — sessions will not survive a restart", file=sys.stderr)
 
 
 def hash_password(pw, salt=None, iters=PBKDF2_ITERS):
@@ -94,42 +118,71 @@ def _sign(msg):
     return hmac.new(SECRET, msg.encode(), hashlib.sha256).hexdigest()[:40]
 
 
+def _pw_fingerprint(user):
+    """Short digest of the stored hash: rotating a password changes it."""
+    return hashlib.sha256(USERS.get(user, "").encode()).hexdigest()[:16]
+
+
 def make_session(user):
-    body = f"{user}|{int(time.time()) + SESSION_TTL}"
+    body = f"{user}|{int(time.time()) + SESSION_TTL}|{_pw_fingerprint(user)}"
     return base64.urlsafe_b64encode(f"{body}|{_sign(body)}".encode()).decode()
 
 
 def read_session(token):
-    """→ username, or None if missing / tampered / expired."""
+    """→ username, or None if missing / tampered / expired / password changed."""
     try:
-        user, exp, sig = base64.urlsafe_b64decode(token.encode()).decode().split("|")
+        user, exp, fp, sig = base64.urlsafe_b64decode(token.encode()).decode().split("|")
+        exp = int(exp)
     except Exception:
         return None
-    if not hmac.compare_digest(sig, _sign(f"{user}|{exp}")):
+    if user not in USERS:
         return None
-    if int(exp) < time.time() or user not in USERS:
+    if not hmac.compare_digest(sig, _sign(f"{user}|{exp}|{fp}")):
+        return None
+    if exp < time.time() or not hmac.compare_digest(fp, _pw_fingerprint(user)):
         return None
     return user
 
 
-def too_many_failures(ip):
+def _recent(key, now):
+    recent = [t for t in _fails.get(key, []) if now - t < FAIL_WINDOW]
+    _fails[key] = recent
+    return len(recent)
+
+
+def too_many_failures(ip, user):
+    """Locked out if this IP, this username, or everyone together has failed
+    too often in the window.  The global cap is what a forged-IP attacker hits."""
     now = time.time()
     with _fails_lock:
-        recent = [t for t in _fails.get(ip, []) if now - t < FAIL_WINDOW]
-        _fails[ip] = recent
-        return len(recent) >= FAIL_LIMIT
+        return (_recent(f"ip:{ip}", now) >= FAIL_LIMIT
+                or _recent(f"user:{user}", now) >= FAIL_LIMIT
+                or _recent("*", now) >= GLOBAL_FAIL_LIMIT)
 
 
-def note_failure(ip):
+def note_failure(ip, user):
+    now = time.time()
     with _fails_lock:
-        _fails.setdefault(ip, []).append(time.time())
+        for key in (f"ip:{ip}", f"user:{user}", "*"):
+            _fails.setdefault(key, []).append(now)
+
+
+def check_password(user, pw):
+    global _DUMMY_HASH
+    if user in USERS:
+        return verify_password(pw, USERS[user])
+    if _DUMMY_HASH is None:
+        _DUMMY_HASH = hash_password(secrets.token_hex(8))
+    verify_password(pw, _DUMMY_HASH)  # burn the same time, then fail
+    return False
 
 
 LOGIN_PAGE = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in · Aladí Catalogue</title>
 <script>try{var t=localStorage.getItem("theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -329,6 +382,25 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def end_headers(self):
+        # Every response, static files included: private app, never indexed,
+        # never framed, never cached by anything between the box and the browser.
+        self.send_header("X-Robots-Tag", "noindex, nofollow")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if AUTH_ON:
+            self.send_header("Cache-Control", "private, no-store")
+        super().end_headers()
+
+    def do_HEAD(self):
+        # SimpleHTTPRequestHandler would answer HEAD for static files without
+        # ever reaching the login check.
+        parsed = urllib.parse.urlparse(self.path)
+        if not self.require_auth(parsed):
+            return
+        super().do_HEAD()
+
     def send_json(self, obj, code=200):
         data = json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(code)
@@ -339,8 +411,12 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ── auth plumbing ──
     def client_ip(self):
+        # Behind the reverse proxy the real client is the LAST hop: Caddy appends
+        # it, so anything earlier in the list was supplied by the client itself.
         fwd = self.headers.get("X-Forwarded-For", "")
-        return fwd.split(",")[0].strip() if fwd else self.client_address[0]
+        if TRUST_PROXY and fwd:
+            return fwd.split(",")[-1].strip()
+        return self.client_address[0]
 
     def current_user(self):
         cookie = self.headers.get("Cookie", "")
@@ -365,7 +441,6 @@ class Handler(SimpleHTTPRequestHandler):
     def send_html(self, data, code=200):
         self.send_response(code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -393,12 +468,12 @@ class Handler(SimpleHTTPRequestHandler):
         if not AUTH_ON:
             return self.redirect(nxt)
         ip = self.client_ip()
-        if too_many_failures(ip):
+        if too_many_failures(ip, user):
             return self.send_html(render_login("Too many attempts. Wait 15 minutes.", user, nxt), 429)
-        if user in USERS and verify_password(pw, USERS[user]):
+        if check_password(user, pw):
             cookie = f"{SESSION_COOKIE}={make_session(user)}; Max-Age={SESSION_TTL}{self.cookie_attrs()}"
             return self.redirect(nxt, cookie)
-        note_failure(ip)
+        note_failure(ip, user)
         time.sleep(0.5)
         self.send_html(render_login("That name and password don\u2019t match.", user, nxt), 401)
 
@@ -494,5 +569,6 @@ if __name__ == "__main__":
     class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
         daemon_threads = True
 
+    check_auth_config()
     print(f"Aladi catalogue → {BIND}:{PORT}  auth={'on' if AUTH_ON else 'off'}")
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()

@@ -1,6 +1,6 @@
-# Server stack for the Hetzner box. HTTPS + basic auth come from the box's
-# shared Caddy (/srv/caddy), which proxies <private host> ->
-# aladi:8377 over the external "web" network. Nothing here publishes a port.
+# Server stack for the VPS. TLS comes from the box's shared Caddy (/srv/caddy),
+# which proxies the public hostname -> aladi:8377 over the external "web"
+# network; login is handled in-app (server.py). Nothing here publishes a port.
 # Run from /srv/aladi on the box:
 #   docker compose -f deploy/compose.yaml up -d --build
 #   docker compose -f deploy/compose.yaml run --rm jobs      # weekly (cron, all langs)
@@ -21,6 +21,12 @@ services:
     env_file:
       - path: ../.env
         required: false
+    # Fail closed: without a parsable ALADI_USERS the container exits instead of
+    # serving the catalogue to the world. Caddy is the only client, so its
+    # X-Forwarded-For is trusted for the login lockout.
+    environment:
+      ALADI_REQUIRE_AUTH: "1"
+      ALADI_TRUST_PROXY: "1"
     volumes:
       - ../data:/app/data
     networks:
